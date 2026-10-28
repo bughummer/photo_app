@@ -34,6 +34,14 @@
       return mix(mix(hash(cell), hash(cell + vec2(1.0, 0.0)), f.x),
                  mix(hash(cell + vec2(0.0, 1.0)), hash(cell + vec2(1.0, 1.0)), f.x), f.y);
     }
+    float waterHeight(vec2 p) {
+      vec2 q = p * 0.018 + vec2(uStrokeSeed * 0.17, uStrokeSeed * 0.11);
+      float flow = noise(q * 0.9 + vec2(uSeed * 0.008, -uSeed * 0.006));
+      float broad = noise(q * 1.8 + vec2(flow * 1.7, -flow * 0.9));
+      float fine = noise(q * 4.0 - vec2(flow * 0.7));
+      float wave = sin(dot(p, vec2(0.04, 0.023)) + flow * 5.0 - uSeed * 0.09);
+      return broad * 0.7 + fine * 0.2 + wave * 0.18;
+    }
     void main() {
       vec2 p = gl_FragCoord.xy;
       vec2 diff = p - uCenter;
@@ -73,6 +81,20 @@
         vec4 dragged = texture(uStrokeImage, clamp(pulledPoint / uResolution, vec2(0.0), vec2(1.0)));
         float flecks = smoothstep(0.78, 0.9, fine) * coverage * uStrength * 0.25;
         fragColor = mix(base, dragged, clamp(coverage * uStrength * 1.45 + flecks, 0.0, 1.0));
+        return;
+      } else if (uMode == 5) {
+        vec2 gradient = vec2(
+          waterHeight(p + vec2(2.0, 0.0)) - waterHeight(p - vec2(2.0, 0.0)),
+          waterHeight(p + vec2(0.0, 2.0)) - waterHeight(p - vec2(0.0, 2.0))
+        );
+        vec2 warp = (gradient * uRadius * 0.22 + uDelta * 0.65) * uStrength * falloff;
+        vec2 refracted = clamp((p - warp) / uResolution, vec2(0.0), vec2(1.0));
+        vec2 fringe = normalize(gradient + vec2(0.0001)) * min(length(gradient) * 10.0, 2.5) * uStrength * falloff / uResolution;
+        vec4 color = texture(uImage, refracted);
+        color.r = texture(uImage, clamp(refracted + fringe, vec2(0.0), vec2(1.0))).r;
+        color.b = texture(uImage, clamp(refracted - fringe, vec2(0.0), vec2(1.0))).b;
+        float glint = smoothstep(0.75, 1.05, waterHeight(p)) * falloff * uStrength * 0.04;
+        fragColor = vec4(min(color.rgb + vec3(glint * 0.8, glint, glint * 1.2), vec3(1.0)), color.a);
         return;
       }
       fragColor = texture(uImage, clamp(source / uResolution, vec2(0.0), vec2(1.0)));
@@ -172,7 +194,7 @@
     gl.uniform1f(gl.getUniformLocation(effectProgram, 'uSeed'), ++state.seed);
     gl.uniform1f(gl.getUniformLocation(effectProgram, 'uStrokeSeed'), state.strokeSeed);
     gl.uniform2f(gl.getUniformLocation(effectProgram, 'uDirection'), state.direction.x, state.direction.y);
-    gl.uniform1i(gl.getUniformLocation(effectProgram, 'uMode'), ['smear','swirl','bulge','disperse','paint'].indexOf(state.brush));
+    gl.uniform1i(gl.getUniformLocation(effectProgram, 'uMode'), ['smear','swirl','bulge','disperse','paint','water'].indexOf(state.brush));
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     active = next;
     state.dirty = true;
