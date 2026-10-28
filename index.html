@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Photo Flow Studio</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="app">
+    <header class="topbar">
+      <div><div class="eyebrow">MOVEMENT STUDIO</div><h1>Photo Flow</h1></div>
+      <div class="top-actions"><button id="openTop" class="button primary">Open image</button><button id="export" class="button" disabled>Export PNG</button></div>
+    </header>
+    <div class="workspace">
+      <aside class="panel">
+        <div class="section-label">BRUSH</div>
+        <div class="brushes" role="group" aria-label="Brush type">
+          <button class="brush active" data-brush="smear"><strong>Fluid smear</strong><span>Pull color into soft trails</span></button>
+          <button class="brush" data-brush="swirl"><strong>Swirl</strong><span>Turn color into flowing arcs</span></button>
+          <button class="brush" data-brush="bulge"><strong>Bulge</strong><span>Push and stretch the image</span></button>
+          <button class="brush" data-brush="disperse"><strong>Disperse</strong><span>Scatter color into fragments</span></button>
+        </div>
+        <div class="divider"></div>
+        <label class="slider-label" for="size"><span>Brush size</span><output id="sizeValue">120 px</output></label>
+        <input id="size" type="range" min="20" max="400" value="120">
+        <label class="slider-label" for="strength"><span>Strength</span><output id="strengthValue">50%</output></label>
+        <input id="strength" type="range" min="5" max="100" value="50">
+        <div class="divider"></div>
+        <label class="toggle-row" for="keepMoving"><span><strong>Keep moving</strong><small>Motion continues after release</small></span><input id="keepMoving" type="checkbox" checked><i aria-hidden="true"></i></label>
+        <p class="hint">Drag on the image with a mouse or finger. Try a quick stroke to give the image momentum.</p>
+      </aside>
+      <section class="stage" id="stage" aria-label="Image canvas">
+        <canvas id="canvas" aria-label="Editable image"></canvas>
+        <div id="empty" class="empty"><div class="empty-mark">✳</div><h2>Make an image move.</h2><p>Open an image, then drag across it to pull, swirl, bulge, or disperse its colors.</p><button id="openEmpty" class="button primary">Choose an image</button><p class="formats">JPG, PNG, WEBP · processed locally on your device</p></div>
+        <div id="cursor" class="cursor" hidden></div>
+        <div class="stage-actions"><button id="undo" class="button" disabled>Undo</button><button id="reset" class="button" disabled>Reset image</button></div>
+      </section>
+    </div>
+    <input id="file" type="file" accept="image/png,image/jpeg,image/webp,image/avif" hidden>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>

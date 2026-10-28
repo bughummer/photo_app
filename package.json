@@ -1,0 +1,15 @@
+{
+  "name": "photo-flow-studio",
+  "version": "0.1.0",
+  "private": true,
+  "description": "An interactive image movement prototype",
+  "main": "electron.cjs",
+  "scripts": {
+    "start": "electron .",
+    "web": "node server.cjs",
+    "check": "node --check electron.cjs && node --check server.cjs && node --check app.js"
+  },
+  "devDependencies": {
+    "electron": "^39.0.0"
+  }
+}
