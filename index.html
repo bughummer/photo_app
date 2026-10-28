@@ -20,6 +20,7 @@
           <button class="brush" data-brush="swirl"><strong>Swirl</strong><span>Turn color into flowing arcs</span></button>
           <button class="brush" data-brush="bulge"><strong>Bulge</strong><span>Push and stretch the image</span></button>
           <button class="brush" data-brush="disperse"><strong>Disperse</strong><span>Scatter color into fragments</span></button>
+          <button class="brush" data-brush="paint"><strong>Paint pull</strong><span>Drag layered color with torn edges</span></button>
         </div>
         <div class="divider"></div>
         <label class="slider-label" for="size"><span>Brush size</span><output id="sizeValue">120 px</output></label>
@@ -32,7 +33,7 @@
       </aside>
       <section class="stage" id="stage" aria-label="Image canvas">
         <canvas id="canvas" aria-label="Editable image"></canvas>
-        <div id="empty" class="empty"><div class="empty-mark">✳</div><h2>Make an image move.</h2><p>Open an image, then drag across it to pull, swirl, bulge, or disperse its colors.</p><button id="openEmpty" class="button primary">Choose an image</button><p class="formats">JPG, PNG, WEBP · processed locally on your device</p></div>
+        <div id="empty" class="empty"><div class="empty-mark">✳</div><h2>Make an image move.</h2><p>Open an image, then drag across it with a movement brush.</p><button id="openEmpty" class="button primary">Choose an image</button><p class="formats">JPG, PNG, WEBP · processed locally on your device</p></div>
         <div id="cursor" class="cursor" hidden></div>
         <div class="stage-actions"><button id="undo" class="button" disabled>Undo</button><button id="reset" class="button" disabled>Reset image</button></div>
       </section>

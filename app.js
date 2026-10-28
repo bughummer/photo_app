@@ -3,7 +3,7 @@
   const stage = document.getElementById('stage');
   const gl = canvas.getContext('webgl2', { preserveDrawingBuffer: true, premultipliedAlpha: false });
   const $ = id => document.getElementById(id);
-  const state = { ready: false, brush: 'smear', size: 120, strength: 0.5, dragging: false, pointer: null, momentum: null, history: [], seed: 0, dirty: false };
+  const state = { ready: false, brush: 'smear', size: 120, strength: 0.5, dragging: false, pointer: null, momentum: null, history: [], seed: 0, strokeSeed: 0, direction: { x: 1, y: 0 }, dirty: false };
   if (!gl) {
     $('empty').querySelector('p').textContent = 'This app needs a browser or graphics driver with WebGL 2 support.';
     return;
@@ -16,15 +16,24 @@
   const effect = `#version 300 es
     precision highp float;
     uniform sampler2D uImage;
+    uniform sampler2D uStrokeImage;
     uniform vec2 uResolution;
     uniform vec2 uCenter;
     uniform vec2 uDelta;
     uniform float uRadius;
     uniform float uStrength;
     uniform float uSeed;
+    uniform float uStrokeSeed;
+    uniform vec2 uDirection;
     uniform int uMode;
     out vec4 fragColor;
     float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+    float noise(vec2 p) {
+      vec2 cell = floor(p), f = fract(p);
+      f = f * f * (3.0 - 2.0 * f);
+      return mix(mix(hash(cell), hash(cell + vec2(1.0, 0.0)), f.x),
+                 mix(hash(cell + vec2(0.0, 1.0)), hash(cell + vec2(1.0, 1.0)), f.x), f.y);
+    }
     void main() {
       vec2 p = gl_FragCoord.xy;
       vec2 diff = p - uCenter;
@@ -39,10 +48,32 @@
         source = uCenter + mat2(c, -s, s, c) * diff;
       } else if (uMode == 2) {
         source = uCenter + diff * (1.0 - 0.42 * uStrength * falloff);
-      } else {
+      } else if (uMode == 3) {
         vec2 cell = floor(p / 4.0);
         vec2 jitter = vec2(hash(cell + uSeed), hash(cell.yx + uSeed * 1.37)) * 2.0 - 1.0;
         source -= (uDelta * 0.8 + jitter * uRadius * 0.22) * falloff * uStrength;
+      } else if (uMode == 4) {
+        vec2 axis = normalize(uDirection);
+        vec2 side = vec2(-axis.y, axis.x);
+        vec2 texturePoint = p + vec2(uStrokeSeed * 23.7, uStrokeSeed * 11.3);
+        float broad = noise(texturePoint * 0.025);
+        float fine = noise(texturePoint * 0.16);
+        float edge = falloff + (broad - 0.5) * 0.42 + (fine - 0.5) * 0.14;
+        float coverage = smoothstep(0.035, 0.28, edge);
+        float ribbons = sin(dot(diff, side) * 0.12 + broad * 3.0);
+        float ribbonMask = smoothstep(-0.65, 0.35, ribbons);
+        float shards = noise(texturePoint * 0.09 + broad * 2.0);
+        float streaks = noise(vec2(dot(texturePoint, side) * 0.08, dot(texturePoint, axis) * 0.012));
+        float brokenEdge = smoothstep(0.02, 0.18, falloff) * (1.0 - smoothstep(0.2, 0.55, falloff));
+        coverage = max(coverage * smoothstep(0.18, 0.42, shards), brokenEdge * smoothstep(0.65, 0.83, shards) * 0.85);
+        coverage *= mix(0.5, 1.0, ribbonMask) * mix(0.35, 1.0, streaks);
+        float pull = (length(uDelta) * 3.0 + uRadius * 0.1) * uStrength * coverage;
+        vec2 pulledPoint = p - axis * pull - side * (broad - 0.5) * uRadius * 0.12 * uStrength;
+        vec4 base = texture(uImage, clamp(p / uResolution, vec2(0.0), vec2(1.0)));
+        vec4 dragged = texture(uStrokeImage, clamp(pulledPoint / uResolution, vec2(0.0), vec2(1.0)));
+        float flecks = smoothstep(0.78, 0.9, fine) * coverage * uStrength * 0.25;
+        fragColor = mix(base, dragged, clamp(coverage * uStrength * 1.45 + flecks, 0.0, 1.0));
+        return;
       }
       fragColor = texture(uImage, clamp(source / uResolution, vec2(0.0), vec2(1.0)));
     }`;
@@ -130,13 +161,18 @@
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, textures[active]);
     gl.uniform1i(gl.getUniformLocation(effectProgram, 'uImage'), 0);
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, state.history.at(-1) || textures[active]);
+    gl.uniform1i(gl.getUniformLocation(effectProgram, 'uStrokeImage'), 1);
     gl.uniform2f(gl.getUniformLocation(effectProgram, 'uResolution'), canvas.width, canvas.height);
     gl.uniform2f(gl.getUniformLocation(effectProgram, 'uCenter'), point.x, point.y);
     gl.uniform2f(gl.getUniformLocation(effectProgram, 'uDelta'), delta.x, delta.y);
     gl.uniform1f(gl.getUniformLocation(effectProgram, 'uRadius'), state.size * canvas.width / canvas.getBoundingClientRect().width / 2);
     gl.uniform1f(gl.getUniformLocation(effectProgram, 'uStrength'), state.strength * power);
     gl.uniform1f(gl.getUniformLocation(effectProgram, 'uSeed'), ++state.seed);
-    gl.uniform1i(gl.getUniformLocation(effectProgram, 'uMode'), ['smear','swirl','bulge','disperse'].indexOf(state.brush));
+    gl.uniform1f(gl.getUniformLocation(effectProgram, 'uStrokeSeed'), state.strokeSeed);
+    gl.uniform2f(gl.getUniformLocation(effectProgram, 'uDirection'), state.direction.x, state.direction.y);
+    gl.uniform1i(gl.getUniformLocation(effectProgram, 'uMode'), ['smear','swirl','bulge','disperse','paint'].indexOf(state.brush));
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     active = next;
     state.dirty = true;
@@ -202,6 +238,7 @@
     state.dragging = true;
     stopMotion();
     state.lastDelta = null;
+    state.strokeSeed = ++state.seed;
     state.pointer = pointFromEvent(event);
     state.history.push(makeTexture());
     copyTexture(textures[active], state.history.at(-1));
@@ -216,6 +253,7 @@
     const point = pointFromEvent(event);
     const delta = { x: point.x - state.pointer.x, y: point.y - state.pointer.y };
     const distance = Math.hypot(delta.x, delta.y);
+    if (distance > 0.01) state.direction = { x: delta.x / distance, y: delta.y / distance };
     const steps = Math.max(1, Math.ceil(distance / Math.max(8, state.size * 0.18)));
     for (let i = 1; i <= steps; i++) stroke({ x: state.pointer.x + delta.x * i / steps, y: state.pointer.y + delta.y * i / steps }, { x: delta.x / steps, y: delta.y / steps });
     state.pointer = point;
