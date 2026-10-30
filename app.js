@@ -3,7 +3,7 @@
   const stage = document.getElementById('stage');
   const gl = canvas.getContext('webgl2', { preserveDrawingBuffer: true, premultipliedAlpha: false });
   const $ = id => document.getElementById(id);
-  const state = { ready: false, brush: 'smear', size: 120, strength: 0.5, dragging: false, pointer: null, momentum: null, history: [], seed: 0, strokeSeed: 0, direction: { x: 1, y: 0 }, dirty: false };
+  const state = { ready: false, brush: 'smear', size: 120, strength: 0.5, dragging: false, pointer: null, momentum: null, history: [], seed: 0, strokeSeed: 0, direction: { x: 1, y: 0 }, brushTexture: null, brushBitmap: null, brushCanvas: null, brushMode: null, dirty: false };
   if (!gl) {
     $('empty').querySelector('p').textContent = 'This app needs a browser or graphics driver with WebGL 2 support.';
     return;
@@ -17,6 +17,8 @@
     precision highp float;
     uniform sampler2D uImage;
     uniform sampler2D uStrokeImage;
+    uniform sampler2D uBrushMask;
+    uniform int uUseBrushMask;
     uniform vec2 uResolution;
     uniform vec2 uCenter;
     uniform vec2 uDelta;
@@ -47,6 +49,11 @@
       vec2 diff = p - uCenter;
       float d = length(diff);
       float falloff = pow(max(0.0, 1.0 - d / max(1.0, uRadius)), 1.7);
+      if (uUseBrushMask == 1) {
+        vec2 maskUV = diff / (2.0 * max(1.0, uRadius)) + 0.5;
+        float inside = step(0.0, maskUV.x) * step(maskUV.x, 1.0) * step(0.0, maskUV.y) * step(maskUV.y, 1.0);
+        falloff = inside * texture(uBrushMask, clamp(maskUV, vec2(0.0), vec2(1.0))).a;
+      }
       vec2 source = p;
       if (uMode == 0) {
         source -= uDelta * falloff * uStrength * 1.6;
@@ -95,6 +102,26 @@
         color.b = texture(uImage, clamp(refracted - fringe, vec2(0.0), vec2(1.0))).b;
         float glint = smoothstep(0.75, 1.05, waterHeight(p)) * falloff * uStrength * 0.04;
         fragColor = vec4(min(color.rgb + vec3(glint * 0.8, glint, glint * 1.2), vec3(1.0)), color.a);
+        return;
+      } else if (uMode == 6) {
+        vec2 axis = normalize(uDirection);
+        vec2 side = vec2(-axis.y, axis.x);
+        vec2 q = p * 0.027 + vec2(uStrokeSeed * 0.19, uSeed * 0.015);
+        float curl = noise(q * 0.8);
+        float tendril = sin(dot(diff, side) * 0.12 + curl * 7.0 + dot(diff, axis) * 0.025);
+        float thinTendril = sin(dot(diff, side) * 0.23 - curl * 9.0 + dot(diff, axis) * 0.04);
+        float filaments = max(smoothstep(0.58, 0.95, tendril * 0.5 + 0.5), smoothstep(0.75, 0.98, thinTendril * 0.5 + 0.5) * 0.6);
+        float gaps = smoothstep(0.22, 0.75, noise(q * 2.3 + curl));
+        float haze = noise(q * 1.2 + vec2(3.1, 7.7)) * 0.12;
+        float envelope = uUseBrushMask == 1 ? falloff : pow(max(0.0, 1.0 - d / max(1.0, uRadius)), 0.8);
+        float density = clamp((filaments * gaps + haze) * envelope * uStrength * 1.35, 0.0, 0.85);
+        vec2 pull = axis * (uRadius * 0.4 + length(uDelta) * 1.8) * uStrength * envelope;
+        pull += side * (curl - 0.5) * uRadius * 0.24 * envelope;
+        vec2 sourceUV = clamp((p - pull) / uResolution, vec2(0.0), vec2(1.0));
+        vec3 carried = texture(uStrokeImage, sourceUV).rgb;
+        vec3 soft = texture(uStrokeImage, clamp(sourceUV + side * 3.0 / uResolution, vec2(0.0), vec2(1.0))).rgb;
+        vec4 base = texture(uImage, clamp(p / uResolution, vec2(0.0), vec2(1.0)));
+        fragColor = vec4(mix(base.rgb, mix(carried, soft, 0.35), density), base.a);
         return;
       }
       fragColor = texture(uImage, clamp(source / uResolution, vec2(0.0), vec2(1.0)));
@@ -186,6 +213,10 @@
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, state.history.at(-1) || textures[active]);
     gl.uniform1i(gl.getUniformLocation(effectProgram, 'uStrokeImage'), 1);
+    gl.activeTexture(gl.TEXTURE2);
+    gl.bindTexture(gl.TEXTURE_2D, state.brushTexture);
+    gl.uniform1i(gl.getUniformLocation(effectProgram, 'uBrushMask'), 2);
+    gl.uniform1i(gl.getUniformLocation(effectProgram, 'uUseBrushMask'), state.brushTexture ? 1 : 0);
     gl.uniform2f(gl.getUniformLocation(effectProgram, 'uResolution'), canvas.width, canvas.height);
     gl.uniform2f(gl.getUniformLocation(effectProgram, 'uCenter'), point.x, point.y);
     gl.uniform2f(gl.getUniformLocation(effectProgram, 'uDelta'), delta.x, delta.y);
@@ -194,7 +225,7 @@
     gl.uniform1f(gl.getUniformLocation(effectProgram, 'uSeed'), ++state.seed);
     gl.uniform1f(gl.getUniformLocation(effectProgram, 'uStrokeSeed'), state.strokeSeed);
     gl.uniform2f(gl.getUniformLocation(effectProgram, 'uDirection'), state.direction.x, state.direction.y);
-    gl.uniform1i(gl.getUniformLocation(effectProgram, 'uMode'), ['smear','swirl','bulge','disperse','paint','water'].indexOf(state.brush));
+    gl.uniform1i(gl.getUniformLocation(effectProgram, 'uMode'), ['smear','swirl','bulge','disperse','paint','water','smoke'].indexOf(state.brush));
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     active = next;
     state.dirty = true;
@@ -239,6 +270,60 @@
       draw();
       setButtons();
     } catch (error) { alert(`Could not open this image: ${error.message}`); }
+  }
+  function makeBrushFromImage(bitmap, mode) {
+    const brushCanvas = document.createElement('canvas');
+    brushCanvas.width = brushCanvas.height = 256;
+    const context = brushCanvas.getContext('2d', { willReadFrequently: true });
+    const scale = Math.min(256 / bitmap.width, 256 / bitmap.height);
+    const width = bitmap.width * scale;
+    const height = bitmap.height * scale;
+    const left = (256 - width) / 2;
+    const top = (256 - height) / 2;
+    context.drawImage(bitmap, left, top, width, height);
+    const image = context.getImageData(0, 0, 256, 256);
+    let visible = 0;
+    for (let i = 0; i < image.data.length; i += 4) {
+      const alpha = image.data[i + 3] / 255;
+      const brightness = (image.data[i] * 0.2126 + image.data[i + 1] * 0.7152 + image.data[i + 2] * 0.0722) / 255;
+      const opacity = mode === 'alpha' ? alpha : alpha * (mode === 'dark' ? 1 - brightness : brightness);
+      image.data[i] = image.data[i + 1] = image.data[i + 2] = 255;
+      image.data[i + 3] = Math.round(opacity * 255);
+      visible += opacity;
+    }
+    if (visible < 1) throw new Error('This selection produces an empty brush. Try another image mode.');
+    context.putImageData(image, 0, 0);
+    const texture = makeTexture(brushCanvas);
+    if (state.brushTexture) gl.deleteTexture(state.brushTexture);
+    state.brushTexture = texture;
+    state.brushCanvas = brushCanvas;
+    state.brushMode = mode;
+    $('brushPreview').src = brushCanvas.toDataURL('image/png');
+    $('brushPreview').hidden = false;
+    $('brushStatus').textContent = 'Custom PNG brush';
+    $('maskSource').disabled = false;
+    $('saveBrush').disabled = false;
+    $('clearBrush').disabled = false;
+  }
+  async function loadBrush(file) {
+    if (!file) return;
+    if (file.type !== 'image/png') { alert('Choose a PNG image for the brush.'); return; }
+    let bitmap;
+    try {
+      bitmap = await createImageBitmap(file);
+      const sample = document.createElement('canvas');
+      sample.width = sample.height = 64;
+      const context = sample.getContext('2d', { willReadFrequently: true });
+      context.drawImage(bitmap, 0, 0, 64, 64);
+      const pixels = context.getImageData(0, 0, 64, 64).data;
+      let transparent = 0;
+      for (let i = 3; i < pixels.length; i += 4) if (pixels[i] < 240) transparent++;
+      const mode = transparent > 64 ? 'alpha' : 'dark';
+      makeBrushFromImage(bitmap, mode);
+      if (state.brushBitmap) state.brushBitmap.close();
+      state.brushBitmap = bitmap;
+      $('maskSource').value = mode;
+    } catch (error) { if (bitmap) bitmap.close(); alert(`Could not create brush: ${error.message}`); }
   }
   function pointFromEvent(event) {
     const bounds = canvas.getBoundingClientRect();
@@ -310,6 +395,32 @@
 
   for (const id of ['openTop','openEmpty']) $(id).addEventListener('click', () => $('file').click());
   $('file').addEventListener('change', event => { loadImage(event.target.files[0]); event.target.value = ''; });
+  $('importBrush').addEventListener('click', () => $('brushFile').click());
+  $('brushFile').addEventListener('change', event => { loadBrush(event.target.files[0]); event.target.value = ''; });
+  $('maskSource').addEventListener('change', event => {
+    try { makeBrushFromImage(state.brushBitmap, event.target.value); }
+    catch (error) { event.target.value = state.brushMode; alert(error.message); }
+  });
+  $('clearBrush').addEventListener('click', () => {
+    if (state.brushTexture) gl.deleteTexture(state.brushTexture);
+    if (state.brushBitmap) state.brushBitmap.close();
+    state.brushTexture = state.brushBitmap = state.brushCanvas = state.brushMode = null;
+    $('brushPreview').hidden = true;
+    $('brushPreview').removeAttribute('src');
+    $('brushStatus').textContent = 'Round brush';
+    $('maskSource').disabled = $('saveBrush').disabled = $('clearBrush').disabled = true;
+  });
+  $('saveBrush').addEventListener('click', () => {
+    if (!state.brushCanvas) return;
+    state.brushCanvas.toBlob(blob => {
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'photo-flow-brush.png';
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }, 'image/png');
+  });
   document.querySelectorAll('[data-brush]').forEach(button => button.addEventListener('click', () => {
     state.brush = button.dataset.brush;
     document.querySelectorAll('[data-brush]').forEach(item => item.classList.toggle('active', item === button));
