@@ -1,9 +1,11 @@
 (() => {
   const canvas = document.getElementById('canvas');
+  const particleCanvas = document.getElementById('particleCanvas');
+  const particles = new ParticleLayer(particleCanvas);
   const stage = document.getElementById('stage');
   const gl = canvas.getContext('webgl2', { preserveDrawingBuffer: true, premultipliedAlpha: false });
   const $ = id => document.getElementById(id);
-  const state = { ready: false, brush: 'smear', size: 120, strength: 0.5, dragging: false, pointer: null, momentum: null, history: [], seed: 0, strokeSeed: 0, direction: { x: 1, y: 0 }, brushTexture: null, brushBitmap: null, brushCanvas: null, brushMode: null, dirty: false };
+  const state = { ready: false, brush: 'smear', size: 120, strength: 0.5, dragging: false, pointer: null, momentum: null, history: [], seed: 0, strokeSeed: 0, direction: { x: 1, y: 0 }, brushTexture: null, brushBitmap: null, brushCanvas: null, brushMaskPixels: null, brushMode: null, dirty: false };
   if (!gl) {
     $('empty').querySelector('p').textContent = 'This app needs a browser or graphics driver with WebGL 2 support.';
     return;
@@ -211,7 +213,7 @@
     gl.bindTexture(gl.TEXTURE_2D, textures[active]);
     gl.uniform1i(gl.getUniformLocation(effectProgram, 'uImage'), 0);
     gl.activeTexture(gl.TEXTURE1);
-    gl.bindTexture(gl.TEXTURE_2D, state.history.at(-1) || textures[active]);
+    gl.bindTexture(gl.TEXTURE_2D, state.history.at(-1)?.texture || textures[active]);
     gl.uniform1i(gl.getUniformLocation(effectProgram, 'uStrokeImage'), 1);
     gl.activeTexture(gl.TEXTURE2);
     gl.bindTexture(gl.TEXTURE_2D, state.brushTexture);
@@ -236,11 +238,18 @@
     $('export').disabled = !state.ready;
   }
   function stopMotion() { state.momentum = null; }
+  function brushRadius() { return state.size * canvas.width / canvas.getBoundingClientRect().width / 2; }
   function fitCanvas() {
     if (!state.ready) return;
     const scale = Math.max(0.1, Math.min((stage.clientWidth - 72) / canvas.width, (stage.clientHeight - 108) / canvas.height));
     canvas.style.width = `${Math.round(canvas.width * scale)}px`;
     canvas.style.height = `${Math.round(canvas.height * scale)}px`;
+    const stageBounds = stage.getBoundingClientRect();
+    const bounds = canvas.getBoundingClientRect();
+    particleCanvas.style.left = `${bounds.left - stageBounds.left}px`;
+    particleCanvas.style.top = `${bounds.top - stageBounds.top}px`;
+    particleCanvas.style.width = `${bounds.width}px`;
+    particleCanvas.style.height = `${bounds.height}px`;
   }
   new ResizeObserver(fitCanvas).observe(stage);
   async function loadImage(file) {
@@ -256,12 +265,13 @@
       imageCanvas.height = canvas.height;
       imageCanvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
       bitmap.close();
-      [...textures, original, ...state.history].filter(Boolean).forEach(texture => gl.deleteTexture(texture));
+      [...textures, original, ...state.history.map(entry => entry.texture)].filter(Boolean).forEach(texture => gl.deleteTexture(texture));
       original = makeTexture(imageCanvas);
       textures = [makeTexture(), makeTexture()];
       active = 0;
       copyTexture(original, textures[0]);
       state.history = [];
+      particles.setImage(imageCanvas);
       state.ready = true;
       stopMotion();
       stage.classList.add('loaded');
@@ -297,6 +307,7 @@
     if (state.brushTexture) gl.deleteTexture(state.brushTexture);
     state.brushTexture = texture;
     state.brushCanvas = brushCanvas;
+    state.brushMaskPixels = image;
     state.brushMode = mode;
     $('brushPreview').src = brushCanvas.toDataURL('image/png');
     $('brushPreview').hidden = false;
@@ -347,11 +358,12 @@
     state.lastDelta = null;
     state.strokeSeed = ++state.seed;
     state.pointer = pointFromEvent(event);
-    state.history.push(makeTexture());
-    copyTexture(textures[active], state.history.at(-1));
-    if (state.history.length > 8) gl.deleteTexture(state.history.shift());
+    state.history.push({ texture: makeTexture(), particles: particles.snapshot() });
+    copyTexture(textures[active], state.history.at(-1).texture);
+    if (state.history.length > 8) gl.deleteTexture(state.history.shift().texture);
     setButtons();
-    stroke(state.pointer, { x: 0, y: 0 });
+    if (state.brush === 'particle') particles.spawn(state.pointer, { x: 0, y: 0 }, brushRadius(), state.strength, state.brushMaskPixels, $('keepMoving').checked);
+    else stroke(state.pointer, { x: 0, y: 0 });
     updateCursor(event);
   });
   canvas.addEventListener('pointermove', event => {
@@ -362,14 +374,19 @@
     const distance = Math.hypot(delta.x, delta.y);
     if (distance > 0.01) state.direction = { x: delta.x / distance, y: delta.y / distance };
     const steps = Math.max(1, Math.ceil(distance / Math.max(8, state.size * 0.18)));
-    for (let i = 1; i <= steps; i++) stroke({ x: state.pointer.x + delta.x * i / steps, y: state.pointer.y + delta.y * i / steps }, { x: delta.x / steps, y: delta.y / steps });
+    for (let i = 1; i <= steps; i++) {
+      const sample = { x: state.pointer.x + delta.x * i / steps, y: state.pointer.y + delta.y * i / steps };
+      const stepDelta = { x: delta.x / steps, y: delta.y / steps };
+      if (state.brush === 'particle') particles.spawn(sample, stepDelta, brushRadius(), state.strength, state.brushMaskPixels, $('keepMoving').checked);
+      else stroke(sample, stepDelta);
+    }
     state.pointer = point;
     state.lastDelta = delta;
   });
   function endStroke() {
     if (!state.dragging) return;
     state.dragging = false;
-    if ($('keepMoving').checked && state.lastDelta && Math.hypot(state.lastDelta.x, state.lastDelta.y) > 1) {
+    if (state.brush !== 'particle' && $('keepMoving').checked && state.lastDelta && Math.hypot(state.lastDelta.x, state.lastDelta.y) > 1) {
       state.momentum = { point: { ...state.pointer }, delta: { ...state.lastDelta }, life: 0 };
     }
     state.lastDelta = null;
@@ -389,6 +406,7 @@
       else stroke(moving.point, moving.delta, 0.45);
     }
     if (state.dirty) draw();
+    if ($('keepMoving').checked) particles.tick();
     requestAnimationFrame(tick);
   }
   requestAnimationFrame(tick);
@@ -404,7 +422,7 @@
   $('clearBrush').addEventListener('click', () => {
     if (state.brushTexture) gl.deleteTexture(state.brushTexture);
     if (state.brushBitmap) state.brushBitmap.close();
-    state.brushTexture = state.brushBitmap = state.brushCanvas = state.brushMode = null;
+    state.brushTexture = state.brushBitmap = state.brushCanvas = state.brushMaskPixels = state.brushMode = null;
     $('brushPreview').hidden = true;
     $('brushPreview').removeAttribute('src');
     $('brushStatus').textContent = 'Round brush';
@@ -427,30 +445,39 @@
   }));
   $('size').addEventListener('input', event => { state.size = Number(event.target.value); $('sizeValue').value = `${state.size} px`; });
   $('strength').addEventListener('input', event => { state.strength = Number(event.target.value) / 100; $('strengthValue').value = `${event.target.value}%`; });
-  $('keepMoving').addEventListener('change', event => { if (!event.target.checked) stopMotion(); });
+  $('keepMoving').addEventListener('change', event => { if (!event.target.checked) { stopMotion(); particles.stop(); } });
   $('undo').addEventListener('click', () => {
     if (!state.history.length) return;
     stopMotion();
     const previous = state.history.pop();
-    copyTexture(previous, textures[active]);
-    gl.deleteTexture(previous);
+    copyTexture(previous.texture, textures[active]);
+    gl.deleteTexture(previous.texture);
+    particles.restore(previous.particles);
     state.dirty = true;
     setButtons();
   });
   $('reset').addEventListener('click', () => {
     if (!state.ready) return;
     stopMotion();
-    state.history.forEach(texture => gl.deleteTexture(texture));
+    state.history.forEach(entry => gl.deleteTexture(entry.texture));
     state.history = [];
     copyTexture(original, textures[active]);
+    particles.restore([]);
     state.dirty = true;
     setButtons();
   });
   $('export').addEventListener('click', () => {
     if (!state.ready) return;
     stopMotion();
+    particles.stop();
     draw();
-    canvas.toBlob(blob => {
+    const output = document.createElement('canvas');
+    output.width = canvas.width;
+    output.height = canvas.height;
+    const context = output.getContext('2d');
+    context.drawImage(canvas, 0, 0);
+    context.drawImage(particleCanvas, 0, 0);
+    output.toBlob(blob => {
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;

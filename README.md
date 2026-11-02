@@ -6,7 +6,7 @@ An early desktop prototype for moving the colors of an existing image. It delibe
 
 Install Node.js 20 or newer, then run `npm install` and `npm start` to open the Electron desktop app. For a browser preview, run `npm run web` and visit `http://127.0.0.1:4173`.
 
-Open a JPG, PNG, or WebP image. Drag across it with a mouse or finger using Fluid smear, Swirl, Bulge, Disperse, Paint pull, Water lens, or Smoke. Paint pull draws broad directional patches with broken edges from the image's existing colors; it works best with an image that already has a painted look. Water lens bends the image into ripples and adds subtle color separation. Smoke drags source colors into soft, broken wisps; starting near a subject's edge makes the trail easier to see. Adjust brush size and strength. Keep moving lets the stroke continue briefly with momentum after release; switch it off to stop at release. Undo, Reset image, and Export PNG are available.
+Open a JPG, PNG, or WebP image. Drag across it with a mouse or finger using Fluid smear, Swirl, Bulge, Disperse, Paint pull, Water lens, Smoke, or Particle bloom. Paint pull draws broad directional patches with broken edges from the image's existing colors; it works best with an image that already has a painted look. Water lens bends the image into ripples and adds subtle color separation. Smoke drags source colors into soft, broken wisps. Particle bloom samples the image's colors to draw thousands of fine strands above it; bright, detailed source areas show the effect best. Adjust brush size and strength. Keep moving lets the stroke or particles continue briefly after release; switch it off to stop at release. Undo, Reset image, and Export PNG are available.
 
 ## Custom PNG brushes
 
