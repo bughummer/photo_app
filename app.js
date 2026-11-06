@@ -125,6 +125,13 @@
         vec4 base = texture(uImage, clamp(p / uResolution, vec2(0.0), vec2(1.0)));
         fragColor = vec4(mix(base.rgb, mix(carried, soft, 0.35), density), base.a);
         return;
+      } else if (uMode == 7 || uMode == 8) {
+        vec4 base = texture(uImage, clamp(p / uResolution, vec2(0.0), vec2(1.0)));
+        float textureBreak = noise(p * 0.08 + uStrokeSeed * 0.17);
+        float fade = uMode == 7 ? 0.34 : 0.7;
+        float veil = smoothstep(0.04, 0.5, falloff + (textureBreak - 0.5) * 0.1);
+        fragColor = vec4(base.rgb * (1.0 - veil * uStrength * fade), base.a);
+        return;
       }
       fragColor = texture(uImage, clamp(source / uResolution, vec2(0.0), vec2(1.0)));
     }`;
@@ -227,7 +234,7 @@
     gl.uniform1f(gl.getUniformLocation(effectProgram, 'uSeed'), ++state.seed);
     gl.uniform1f(gl.getUniformLocation(effectProgram, 'uStrokeSeed'), state.strokeSeed);
     gl.uniform2f(gl.getUniformLocation(effectProgram, 'uDirection'), state.direction.x, state.direction.y);
-    gl.uniform1i(gl.getUniformLocation(effectProgram, 'uMode'), ['smear','swirl','bulge','disperse','paint','water','smoke'].indexOf(state.brush));
+    gl.uniform1i(gl.getUniformLocation(effectProgram, 'uMode'), ['smear','swirl','bulge','disperse','paint','water','smoke','particle','fragment'].indexOf(state.brush));
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     active = next;
     state.dirty = true;
@@ -362,8 +369,9 @@
     copyTexture(textures[active], state.history.at(-1).texture);
     if (state.history.length > 8) gl.deleteTexture(state.history.shift().texture);
     setButtons();
+    stroke(state.pointer, { x: 0, y: 0 });
     if (state.brush === 'particle') particles.spawn(state.pointer, { x: 0, y: 0 }, brushRadius(), state.strength, state.brushMaskPixels, $('keepMoving').checked);
-    else stroke(state.pointer, { x: 0, y: 0 });
+    if (state.brush === 'fragment') particles.spawnFragments(state.pointer, { x: 0, y: 0 }, brushRadius(), state.strength, state.brushMaskPixels, $('keepMoving').checked);
     updateCursor(event);
   });
   canvas.addEventListener('pointermove', event => {
@@ -377,8 +385,9 @@
     for (let i = 1; i <= steps; i++) {
       const sample = { x: state.pointer.x + delta.x * i / steps, y: state.pointer.y + delta.y * i / steps };
       const stepDelta = { x: delta.x / steps, y: delta.y / steps };
+      stroke(sample, stepDelta);
       if (state.brush === 'particle') particles.spawn(sample, stepDelta, brushRadius(), state.strength, state.brushMaskPixels, $('keepMoving').checked);
-      else stroke(sample, stepDelta);
+      if (state.brush === 'fragment') particles.spawnFragments(sample, stepDelta, brushRadius(), state.strength, state.brushMaskPixels, $('keepMoving').checked);
     }
     state.pointer = point;
     state.lastDelta = delta;
@@ -386,7 +395,7 @@
   function endStroke() {
     if (!state.dragging) return;
     state.dragging = false;
-    if (state.brush !== 'particle' && $('keepMoving').checked && state.lastDelta && Math.hypot(state.lastDelta.x, state.lastDelta.y) > 1) {
+    if (!['particle','fragment'].includes(state.brush) && $('keepMoving').checked && state.lastDelta && Math.hypot(state.lastDelta.x, state.lastDelta.y) > 1) {
       state.momentum = { point: { ...state.pointer }, delta: { ...state.lastDelta }, life: 0 };
     }
     state.lastDelta = null;
@@ -406,7 +415,7 @@
       else stroke(moving.point, moving.delta, 0.45);
     }
     if (state.dirty) draw();
-    if ($('keepMoving').checked) particles.tick();
+    particles.tick($('keepMoving').checked);
     requestAnimationFrame(tick);
   }
   requestAnimationFrame(tick);
@@ -443,6 +452,7 @@
     state.brush = button.dataset.brush;
     document.querySelectorAll('[data-brush]').forEach(item => item.classList.toggle('active', item === button));
   }));
+  $('showGrid').addEventListener('change', event => particles.setGridVisible(event.target.checked));
   $('size').addEventListener('input', event => { state.size = Number(event.target.value); $('sizeValue').value = `${state.size} px`; });
   $('strength').addEventListener('input', event => { state.strength = Number(event.target.value) / 100; $('strengthValue').value = `${event.target.value}%`; });
   $('keepMoving').addEventListener('change', event => { if (!event.target.checked) { stopMotion(); particles.stop(); } });
@@ -462,7 +472,7 @@
     state.history.forEach(entry => gl.deleteTexture(entry.texture));
     state.history = [];
     copyTexture(original, textures[active]);
-    particles.restore([]);
+    particles.restore({ particles: [], fragments: [], grid: null });
     state.dirty = true;
     setButtons();
   });
@@ -471,6 +481,7 @@
     stopMotion();
     particles.stop();
     draw();
+    particles.render();
     const output = document.createElement('canvas');
     output.width = canvas.width;
     output.height = canvas.height;

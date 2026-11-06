@@ -23,13 +23,15 @@
           <button class="brush" data-brush="paint"><strong>Paint pull</strong><span>Drag layered color with torn edges</span></button>
           <button class="brush" data-brush="water"><strong>Water lens</strong><span>Refract with ripples and color split</span></button>
           <button class="brush" data-brush="smoke"><strong>Smoke</strong><span>Pull color into translucent wisps</span></button>
-          <button class="brush" data-brush="particle"><strong>Particle bloom</strong><span>Lift color into fine strands</span></button>
+          <button class="brush" data-brush="particle"><strong>Particle bloom</strong><span>Grow dense, glowing fibers</span></button>
+          <button class="brush" data-brush="fragment"><strong>Fragment field</strong><span>Lift image shards into gold dust</span></button>
         </div>
         <div class="divider"></div>
         <label class="slider-label" for="size"><span>Brush size</span><output id="sizeValue">120 px</output></label>
         <input id="size" type="range" min="20" max="400" value="120">
         <label class="slider-label" for="strength"><span>Strength</span><output id="strengthValue">50%</output></label>
         <input id="strength" type="range" min="5" max="100" value="50">
+        <label id="gridOption" class="toggle-row grid-option" for="showGrid"><span><strong>Perspective grid</strong><small>Show guide lines over fragments</small></span><input id="showGrid" type="checkbox" checked><i aria-hidden="true"></i></label>
         <div class="divider"></div>
         <div class="section-label">BRUSH SHAPE</div>
         <div class="brush-shape"><img id="brushPreview" alt="Custom brush shape preview" hidden><div><strong id="brushStatus">Round brush</strong><small>Import a PNG or make a brush from its dark, light, or transparent areas.</small></div></div>

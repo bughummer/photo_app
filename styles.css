@@ -3,3 +3,4 @@
 .brush-shape{display:flex;align-items:center;gap:12px;margin:15px 0}.brush-shape img{width:48px;height:48px;object-fit:contain;border:1px solid #45464e;border-radius:8px;background:#42444b;flex:none}.brush-shape strong,.brush-shape small{display:block}.brush-shape strong{font-size:13px}.brush-shape small{font-size:11px;line-height:1.4;color:#a6a6ad;margin-top:4px}.shape-button{width:100%}.mask-label{margin:15px 0 8px}.panel select{width:100%;padding:9px 10px;border:1px solid #45464e;border-radius:8px;background:#23252c;color:#f5f4f5}.panel select:disabled{opacity:.45}.shape-actions{display:flex;gap:8px;margin-top:10px}.shape-actions .button{flex:1;padding:9px 7px;font-size:11px}
 @media(max-width:720px){.panel{max-height:none;overflow:visible}}
 #particleCanvas{display:block;position:absolute;pointer-events:none;max-width:none;max-height:none;box-shadow:none}
+.grid-option{margin:5px 0 20px}
