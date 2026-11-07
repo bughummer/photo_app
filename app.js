@@ -30,8 +30,10 @@
     uniform float uStrokeSeed;
     uniform vec2 uDirection;
     uniform int uMode;
+    uniform int uGlow;
     out vec4 fragColor;
     float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+    float luminance(vec3 color) { return dot(color, vec3(0.2126, 0.7152, 0.0722)); }
     float noise(vec2 p) {
       vec2 cell = floor(p), f = fract(p);
       f = f * f * (3.0 - 2.0 * f);
@@ -131,6 +133,36 @@
         float fade = uMode == 7 ? 0.34 : 0.7;
         float veil = smoothstep(0.04, 0.5, falloff + (textureBreak - 0.5) * 0.1);
         fragColor = vec4(base.rgb * (1.0 - veil * uStrength * fade), base.a);
+        return;
+      } else if (uMode == 9) {
+        vec2 axis = normalize(uDirection);
+        vec2 side = vec2(-axis.y, axis.x);
+        float grain = noise(vec2(dot(p, side) * 0.065, dot(p, axis) * 0.011) + uStrokeSeed * 0.13);
+        float ribbon = smoothstep(0.18, 0.85, grain);
+        float distance = (uRadius * 0.32 + length(uDelta) * 2.5) * uStrength * falloff;
+        vec2 shift = side * (grain - 0.5) * uRadius * 0.045 * falloff;
+        vec3 trail = vec3(0.0);
+        for (int i = 0; i < 4; i++) {
+          float t = float(i) / 3.0;
+          vec2 samplePoint = p - axis * (distance + t * uRadius * 0.24 * uStrength * falloff) + shift;
+          trail += texture(uStrokeImage, clamp(samplePoint / uResolution, vec2(0.0), vec2(1.0))).rgb / 4.0;
+        }
+        vec2 sourcePoint = p - axis * distance + shift;
+        vec2 fringe = side * (1.5 + uRadius * 0.012) * uStrength * falloff;
+        vec3 sharp = texture(uStrokeImage, clamp(sourcePoint / uResolution, vec2(0.0), vec2(1.0))).rgb;
+        sharp.r = texture(uStrokeImage, clamp((sourcePoint + fringe) / uResolution, vec2(0.0), vec2(1.0))).r;
+        sharp.b = texture(uStrokeImage, clamp((sourcePoint - fringe) / uResolution, vec2(0.0), vec2(1.0))).b;
+        vec4 base = texture(uImage, clamp(p / uResolution, vec2(0.0), vec2(1.0)));
+        float veil = falloff * uStrength * (0.45 + ribbon * 0.35);
+        vec3 color = mix(base.rgb, mix(trail, sharp, 0.32), veil);
+        if (uGlow == 1) {
+          vec3 lightA = texture(uStrokeImage, clamp((sourcePoint + side * 4.0) / uResolution, vec2(0.0), vec2(1.0))).rgb;
+          vec3 lightB = texture(uStrokeImage, clamp((sourcePoint - side * 4.0) / uResolution, vec2(0.0), vec2(1.0))).rgb;
+          float edge = length(lightA - lightB);
+          float halo = smoothstep(0.28, 0.82, luminance(trail)) * (0.16 + smoothstep(0.04, 0.35, edge) * 0.32);
+          color = min(color + vec3(1.0, 0.7, 0.38) * halo * falloff * uStrength, vec3(1.0));
+        }
+        fragColor = vec4(color, base.a);
         return;
       }
       fragColor = texture(uImage, clamp(source / uResolution, vec2(0.0), vec2(1.0)));
@@ -234,7 +266,8 @@
     gl.uniform1f(gl.getUniformLocation(effectProgram, 'uSeed'), ++state.seed);
     gl.uniform1f(gl.getUniformLocation(effectProgram, 'uStrokeSeed'), state.strokeSeed);
     gl.uniform2f(gl.getUniformLocation(effectProgram, 'uDirection'), state.direction.x, state.direction.y);
-    gl.uniform1i(gl.getUniformLocation(effectProgram, 'uMode'), ['smear','swirl','bulge','disperse','paint','water','smoke','particle','fragment'].indexOf(state.brush));
+    gl.uniform1i(gl.getUniformLocation(effectProgram, 'uGlow'), $('warmGlow').checked ? 1 : 0);
+    gl.uniform1i(gl.getUniformLocation(effectProgram, 'uMode'), ['smear','swirl','bulge','disperse','paint','water','smoke','particle','fragment','wind'].indexOf(state.brush));
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     active = next;
     state.dirty = true;
@@ -388,6 +421,7 @@
       stroke(sample, stepDelta);
       if (state.brush === 'particle') particles.spawn(sample, stepDelta, brushRadius(), state.strength, state.brushMaskPixels, $('keepMoving').checked);
       if (state.brush === 'fragment') particles.spawnFragments(sample, stepDelta, brushRadius(), state.strength, state.brushMaskPixels, $('keepMoving').checked);
+      if (state.brush === 'wind') particles.spawnWind(sample, stepDelta, brushRadius(), state.strength, state.brushMaskPixels, $('warmGlow').checked, $('keepMoving').checked);
     }
     state.pointer = point;
     state.lastDelta = delta;
@@ -395,7 +429,7 @@
   function endStroke() {
     if (!state.dragging) return;
     state.dragging = false;
-    if (!['particle','fragment'].includes(state.brush) && $('keepMoving').checked && state.lastDelta && Math.hypot(state.lastDelta.x, state.lastDelta.y) > 1) {
+    if (!['particle','fragment','wind'].includes(state.brush) && $('keepMoving').checked && state.lastDelta && Math.hypot(state.lastDelta.x, state.lastDelta.y) > 1) {
       state.momentum = { point: { ...state.pointer }, delta: { ...state.lastDelta }, life: 0 };
     }
     state.lastDelta = null;

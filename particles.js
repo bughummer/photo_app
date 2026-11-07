@@ -165,6 +165,56 @@ class ParticleLayer {
     this.dirty = true;
   }
 
+  spawnWind(point, delta, radius, strength, brushMask, glow, animate) {
+    if (!this.image) return;
+    const dx = delta.x;
+    const dy = -delta.y;
+    const speed = Math.hypot(dx, dy);
+    if (speed < 0.1) return;
+    const axis = Math.atan2(dy, dx);
+    const centerY = this.canvas.height - point.y;
+    const mask = brushMask?.data;
+    const count = Math.round(22 + strength * 32);
+    for (let attempt = 0, added = 0; attempt < count * 4 && added < count; attempt++) {
+      const side = (Math.random() - 0.5) * radius * 1.6;
+      const along = (Math.random() - 0.5) * radius * 0.55;
+      const offsetX = Math.cos(axis + Math.PI / 2) * side + Math.cos(axis) * along;
+      const offsetY = Math.sin(axis + Math.PI / 2) * side + Math.sin(axis) * along;
+      if (mask) {
+        const mx = Math.max(0, Math.min(brushMask.width - 1, Math.floor((offsetX / (2 * radius) + 0.5) * brushMask.width)));
+        const my = Math.max(0, Math.min(brushMask.height - 1, Math.floor((offsetY / (2 * radius) + 0.5) * brushMask.height)));
+        if (Math.random() > mask[(my * brushMask.width + mx) * 4 + 3] / 255) continue;
+      }
+      const sourceX = point.x + offsetX;
+      const sourceY = centerY + offsetY;
+      if (sourceX < 0 || sourceY < 0 || sourceX >= this.canvas.width || sourceY >= this.canvas.height) continue;
+      const pixel = (Math.floor(sourceY) * this.canvas.width + Math.floor(sourceX)) * 4;
+      if (this.image.data[pixel + 3] < 25) continue;
+      const r = this.image.data[pixel];
+      const g = this.image.data[pixel + 1];
+      const b = this.image.data[pixel + 2];
+      const lum = (r * 0.2126 + g * 0.7152 + b * 0.0722) / 255;
+      if (Math.random() > 0.2 + lum * 0.8) continue;
+      const length = (radius * (0.22 + Math.random() * 0.38) + speed * 3.5) * strength;
+      this.particles.push({
+        x: sourceX + dx * 0.7 * strength, y: sourceY + dy * 0.7 * strength,
+        vx: dx * 0.045, vy: dy * 0.045,
+        angle: axis + (Math.random() - 0.5) * 0.22,
+        length, width: 0.55 + Math.random() * 1.7,
+        bend: (Math.random() - 0.5) * 8,
+        opacity: (0.18 + Math.random() * 0.42) * strength,
+        r: glow ? Math.min(255, r * 1.14 + 16) : r,
+        g: glow ? Math.min(255, g * 1.07 + 8) : g,
+        b: glow ? Math.min(255, b * 0.95) : b,
+        energy: 1, kind: 'wind'
+      });
+      added++;
+    }
+    if (this.particles.length > 8500) this.particles.splice(0, this.particles.length - 8500);
+    this.moving = animate;
+    this.dirty = true;
+  }
+
   tick(animate) {
     let active = false;
     if (animate && this.moving) {
@@ -175,7 +225,7 @@ class ParticleLayer {
         particle.vy = particle.vy * 0.97 - curl * 0.012 * particle.energy;
         particle.x += particle.vx;
         particle.y += particle.vy;
-        if (particle.kind === 'fiber') particle.angle += curl * 0.012 * particle.energy;
+        if (particle.kind === 'fiber' || particle.kind === 'wind') particle.angle += curl * 0.012 * particle.energy;
         particle.energy *= 0.976;
         active = true;
       }
@@ -221,7 +271,7 @@ class ParticleLayer {
     ink.clearRect(0, 0, this.ink.width, this.ink.height);
     ink.lineCap = 'round';
     for (const particle of this.particles) {
-      if (particle.kind !== 'fiber') continue;
+      if (particle.kind !== 'fiber' && particle.kind !== 'wind') continue;
       if (particle.x < -20 || particle.y < -20 || particle.x > this.canvas.width + 20 || particle.y > this.canvas.height + 20) continue;
       const length = particle.length;
       const endX = particle.x + Math.cos(particle.angle) * length;
@@ -234,7 +284,7 @@ class ParticleLayer {
       ink.strokeStyle = `rgba(${particle.r},${particle.g},${particle.b},${particle.opacity})`;
       ink.stroke();
     }
-    if (this.particles.some(particle => particle.kind === 'fiber')) {
+    if (this.particles.some(particle => particle.kind === 'fiber' || particle.kind === 'wind')) {
       context.save();
       context.globalCompositeOperation = 'screen';
       context.globalAlpha = 0.68;
