@@ -164,6 +164,19 @@
         }
         fragColor = vec4(color, base.a);
         return;
+      } else if (uMode == 10) {
+        vec2 axis = normalize(uDirection);
+        vec2 side = vec2(-axis.y, axis.x);
+        vec2 q = p + vec2(uStrokeSeed * 19.3, uStrokeSeed * 9.7);
+        float broad = noise(q * 0.035);
+        float grain = noise(vec2(dot(q, side) * 0.15, dot(q, axis) * 0.035));
+        float broken = smoothstep(0.36, 0.65, broad * 0.65 + grain * 0.35);
+        float veil = falloff * uStrength * (0.16 + broken * 0.38);
+        vec2 dragged = p - axis * (uRadius * 0.1 + length(uDelta) * 1.2) * falloff * uStrength;
+        vec4 base = texture(uImage, clamp(p / uResolution, vec2(0.0), vec2(1.0)));
+        vec3 carried = texture(uStrokeImage, clamp(dragged / uResolution, vec2(0.0), vec2(1.0))).rgb;
+        fragColor = vec4(mix(base.rgb, carried * (1.0 - broken * 0.28), veil), base.a);
+        return;
       }
       fragColor = texture(uImage, clamp(source / uResolution, vec2(0.0), vec2(1.0)));
     }`;
@@ -267,7 +280,7 @@
     gl.uniform1f(gl.getUniformLocation(effectProgram, 'uStrokeSeed'), state.strokeSeed);
     gl.uniform2f(gl.getUniformLocation(effectProgram, 'uDirection'), state.direction.x, state.direction.y);
     gl.uniform1i(gl.getUniformLocation(effectProgram, 'uGlow'), $('warmGlow').checked ? 1 : 0);
-    gl.uniform1i(gl.getUniformLocation(effectProgram, 'uMode'), ['smear','swirl','bulge','disperse','paint','water','smoke','particle','fragment','wind'].indexOf(state.brush));
+    gl.uniform1i(gl.getUniformLocation(effectProgram, 'uMode'), ['smear','swirl','bulge','disperse','paint','water','smoke','particle','fragment','wind','dissolve'].indexOf(state.brush));
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     active = next;
     state.dirty = true;
@@ -405,6 +418,7 @@
     stroke(state.pointer, { x: 0, y: 0 });
     if (state.brush === 'particle') particles.spawn(state.pointer, { x: 0, y: 0 }, brushRadius(), state.strength, state.brushMaskPixels, $('keepMoving').checked);
     if (state.brush === 'fragment') particles.spawnFragments(state.pointer, { x: 0, y: 0 }, brushRadius(), state.strength, state.brushMaskPixels, $('keepMoving').checked);
+    if (state.brush === 'dissolve') particles.spawnDissolve(state.pointer, { x: 0, y: 0 }, brushRadius(), state.strength, state.brushMaskPixels, $('keepMoving').checked);
     updateCursor(event);
   });
   canvas.addEventListener('pointermove', event => {
@@ -422,6 +436,7 @@
       if (state.brush === 'particle') particles.spawn(sample, stepDelta, brushRadius(), state.strength, state.brushMaskPixels, $('keepMoving').checked);
       if (state.brush === 'fragment') particles.spawnFragments(sample, stepDelta, brushRadius(), state.strength, state.brushMaskPixels, $('keepMoving').checked);
       if (state.brush === 'wind') particles.spawnWind(sample, stepDelta, brushRadius(), state.strength, state.brushMaskPixels, $('warmGlow').checked, $('keepMoving').checked);
+      if (state.brush === 'dissolve') particles.spawnDissolve(sample, stepDelta, brushRadius(), state.strength, state.brushMaskPixels, $('keepMoving').checked);
     }
     state.pointer = point;
     state.lastDelta = delta;
@@ -429,7 +444,7 @@
   function endStroke() {
     if (!state.dragging) return;
     state.dragging = false;
-    if (!['particle','fragment','wind'].includes(state.brush) && $('keepMoving').checked && state.lastDelta && Math.hypot(state.lastDelta.x, state.lastDelta.y) > 1) {
+    if (!['particle','fragment','wind','dissolve'].includes(state.brush) && $('keepMoving').checked && state.lastDelta && Math.hypot(state.lastDelta.x, state.lastDelta.y) > 1) {
       state.momentum = { point: { ...state.pointer }, delta: { ...state.lastDelta }, life: 0 };
     }
     state.lastDelta = null;
@@ -506,7 +521,7 @@
     state.history.forEach(entry => gl.deleteTexture(entry.texture));
     state.history = [];
     copyTexture(original, textures[active]);
-    particles.restore({ particles: [], fragments: [], grid: null });
+    particles.restore({ particles: [], fragments: [], paintMarks: [], grid: null });
     state.dirty = true;
     setButtons();
   });

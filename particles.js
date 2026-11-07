@@ -4,6 +4,7 @@ class ParticleLayer {
     this.context = canvas.getContext('2d');
     this.particles = [];
     this.fragments = [];
+    this.paintMarks = [];
     this.grid = null;
     this.gridVisible = true;
     this.image = null;
@@ -23,6 +24,7 @@ class ParticleLayer {
     this.image = source.getContext('2d').getImageData(0, 0, source.width, source.height);
     this.particles = [];
     this.fragments = [];
+    this.paintMarks = [];
     this.grid = null;
     this.moving = false;
     this.render();
@@ -32,6 +34,7 @@ class ParticleLayer {
     return {
       particles: this.particles.map(particle => ({ ...particle })),
       fragments: this.fragments.map(fragment => ({ ...fragment })),
+      paintMarks: this.paintMarks.map(mark => ({ ...mark })),
       grid: this.grid ? { ...this.grid } : null
     };
   }
@@ -39,6 +42,7 @@ class ParticleLayer {
   restore(snapshot) {
     this.particles = snapshot.particles.map(particle => ({ ...particle, energy: 0 }));
     this.fragments = snapshot.fragments.map(fragment => ({ ...fragment, energy: 0 }));
+    this.paintMarks = (snapshot.paintMarks || []).map(mark => ({ ...mark, energy: 0 }));
     this.grid = snapshot.grid ? { ...snapshot.grid } : null;
     this.moving = false;
     this.render();
@@ -53,6 +57,7 @@ class ParticleLayer {
     this.moving = false;
     for (const particle of this.particles) particle.energy = 0;
     for (const fragment of this.fragments) fragment.energy = 0;
+    for (const mark of this.paintMarks) mark.energy = 0;
   }
 
   spawn(point, delta, radius, strength, brushMask, animate) {
@@ -215,6 +220,57 @@ class ParticleLayer {
     this.dirty = true;
   }
 
+  spawnDissolve(point, delta, radius, strength, brushMask, animate) {
+    if (!this.image) return;
+    const dx = delta.x;
+    const dy = -delta.y;
+    const speed = Math.hypot(dx, dy);
+    const dragAngle = speed > 0.1 ? Math.atan2(dy, dx) : -Math.PI / 3;
+    const centerY = this.canvas.height - point.y;
+    const mask = brushMask?.data;
+    const count = Math.round(10 + strength * 15);
+    for (let attempt = 0, added = 0; attempt < count * 5 && added < count; attempt++) {
+      const angle = Math.random() * Math.PI * 2;
+      const distance = Math.sqrt(Math.random()) * radius * 0.86;
+      const offsetX = Math.cos(angle) * distance;
+      const offsetY = Math.sin(angle) * distance;
+      if (mask) {
+        const mx = Math.max(0, Math.min(brushMask.width - 1, Math.floor((offsetX / (2 * radius) + 0.5) * brushMask.width)));
+        const my = Math.max(0, Math.min(brushMask.height - 1, Math.floor((offsetY / (2 * radius) + 0.5) * brushMask.height)));
+        if (Math.random() > mask[(my * brushMask.width + mx) * 4 + 3] / 255) continue;
+      }
+      const sx = point.x + offsetX;
+      const sy = centerY + offsetY;
+      if (sx < 0 || sy < 0 || sx >= this.canvas.width || sy >= this.canvas.height) continue;
+      const pixel = (Math.floor(sy) * this.canvas.width + Math.floor(sx)) * 4;
+      const alpha = this.image.data[pixel + 3] / 255;
+      if (alpha < 0.05 || Math.random() > alpha) continue;
+      const r = this.image.data[pixel];
+      const g = this.image.data[pixel + 1];
+      const b = this.image.data[pixel + 2];
+      const lum = (r * 0.2126 + g * 0.7152 + b * 0.0722) / 255;
+      if (Math.random() > 0.5 + lum * 0.5) continue;
+      const direction = dragAngle + (Math.random() - 0.5) * 1.5;
+      const length = Math.max(7, radius * (0.17 + Math.random() * 0.45) * (0.65 + strength * 0.85));
+      const width = Math.max(2, radius * (0.045 + Math.random() * 0.095) * (0.5 + strength * 0.8));
+      const lift = Math.min(radius * 0.5, speed * 2.7) * strength;
+      this.paintMarks.push({
+        x: sx + Math.cos(direction) * lift, y: sy + Math.sin(direction) * lift,
+        vx: Math.cos(direction) * (0.25 + speed * 0.09) * strength,
+        vy: Math.sin(direction) * (0.25 + speed * 0.09) * strength,
+        angle: direction, length, width,
+        bend: (Math.random() - 0.5) * width * 1.8,
+        jag: 0.25 + Math.random() * 0.45,
+        opacity: (0.42 + Math.random() * 0.4) * (0.65 + strength * 0.45),
+        r, g, b, energy: 1
+      });
+      added++;
+    }
+    if (this.paintMarks.length > 2400) this.paintMarks.splice(0, this.paintMarks.length - 2400);
+    this.moving = animate;
+    this.dirty = true;
+  }
+
   tick(animate) {
     let active = false;
     if (animate && this.moving) {
@@ -235,6 +291,14 @@ class ParticleLayer {
         fragment.y += fragment.vy * fragment.energy;
         fragment.angle += fragment.vx * 0.001 * fragment.energy;
         fragment.energy *= 0.974;
+        active = true;
+      }
+      for (const mark of this.paintMarks) {
+        if (mark.energy < 0.03) continue;
+        mark.x += mark.vx * mark.energy;
+        mark.y += mark.vy * mark.energy;
+        mark.angle += Math.sin(mark.x * 0.02 + mark.y * 0.015) * 0.004 * mark.energy;
+        mark.energy *= 0.97;
         active = true;
       }
       this.moving = active;
@@ -264,6 +328,42 @@ class ParticleLayer {
         -half, -half, fragment.size, fragment.size);
       context.strokeStyle = 'rgba(255,215,154,0.35)';
       context.lineWidth = 0.75;
+      context.stroke();
+      context.restore();
+    }
+    for (const mark of this.paintMarks) {
+      if (mark.x < -mark.length || mark.y < -mark.length || mark.x > this.canvas.width + mark.length || mark.y > this.canvas.height + mark.length) continue;
+      context.save();
+      context.translate(mark.x, mark.y);
+      context.rotate(mark.angle);
+      context.globalAlpha = mark.opacity;
+      const l = mark.length;
+      const w = mark.width;
+      context.fillStyle = `rgb(${mark.r},${mark.g},${mark.b})`;
+      context.beginPath();
+      context.moveTo(-l * 0.5, -w * 0.08);
+      context.lineTo(-l * 0.38, -w * (0.38 + mark.jag * 0.2));
+      context.lineTo(-l * 0.02, -w * 0.52 + mark.bend * 0.22);
+      context.lineTo(l * 0.33, -w * (0.38 + mark.jag * 0.18));
+      context.lineTo(l * 0.5, w * 0.03);
+      context.lineTo(l * 0.29, w * (0.42 + mark.jag * 0.15));
+      context.lineTo(-l * 0.06, w * 0.47 + mark.bend * 0.22);
+      context.lineTo(-l * 0.39, w * 0.32);
+      context.closePath();
+      context.fill();
+      context.globalAlpha = mark.opacity * 0.38;
+      context.strokeStyle = `rgb(${Math.min(255, mark.r + 50)},${Math.min(255, mark.g + 50)},${Math.min(255, mark.b + 50)})`;
+      context.lineCap = 'round';
+      context.lineWidth = Math.max(0.7, w * 0.11);
+      context.beginPath();
+      context.moveTo(-l * 0.35, -w * 0.14);
+      context.quadraticCurveTo(-l * 0.04, -w * 0.35 + mark.bend * 0.15, l * 0.32, -w * 0.11);
+      context.stroke();
+      context.globalAlpha = mark.opacity * 0.35;
+      context.lineWidth = Math.max(0.5, w * 0.07);
+      context.beginPath();
+      context.moveTo(-l * 0.18, w * 0.2);
+      context.lineTo(l * (0.08 + mark.jag * 0.35), w * 0.12);
       context.stroke();
       context.restore();
     }
