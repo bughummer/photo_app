@@ -177,6 +177,29 @@
         vec3 carried = texture(uStrokeImage, clamp(dragged / uResolution, vec2(0.0), vec2(1.0))).rgb;
         fragColor = vec4(mix(base.rgb, carried * (1.0 - broken * 0.28), veil), base.a);
         return;
+      } else if (uMode == 11) {
+        float cellSize = mix(4.0, 12.0, clamp(uRadius / 200.0, 0.0, 1.0));
+        vec2 cell = floor(p / cellSize);
+        float strip = floor(p.y / (cellSize * 0.7));
+        float burst = hash(vec2(floor(cell.x / 3.0), floor(cell.y / 2.0)) + uStrokeSeed * 11.7);
+        float line = hash(vec2(strip, uStrokeSeed * 7.3));
+        float block = smoothstep(0.53, 0.8, burst);
+        float shift = (hash(vec2(strip * 0.37, uStrokeSeed * 3.9)) - 0.5) * uRadius * 0.75;
+        shift *= step(0.48, line) * (0.3 + block * 0.7);
+        vec2 samplePoint = floor((p - vec2(shift, block * cellSize * 0.9)) / cellSize) * cellSize + cellSize * 0.5;
+        vec2 uv = clamp(samplePoint / uResolution, vec2(0.0), vec2(1.0));
+        vec3 color = texture(uStrokeImage, uv).rgb;
+        float split = cellSize * (0.35 + block * 0.55) * uStrength;
+        color.r = texture(uStrokeImage, clamp((samplePoint + vec2(split, 0.0)) / uResolution, vec2(0.0), vec2(1.0))).r;
+        color.b = texture(uStrokeImage, clamp((samplePoint - vec2(split, 0.0)) / uResolution, vec2(0.0), vec2(1.0))).b;
+        float gap = step(0.86, burst) * step(0.56, line);
+        color *= 1.0 - gap * 0.75;
+        float accent = step(0.91, hash(cell + uStrokeSeed * 8.1)) * block;
+        color = mix(color, vec3(0.25, 0.92, 0.9), accent * 0.28);
+        vec4 base = texture(uImage, clamp(p / uResolution, vec2(0.0), vec2(1.0)));
+        float coverage = (0.3 + block * 0.7) * falloff * uStrength;
+        fragColor = vec4(mix(base.rgb, color, coverage), base.a);
+        return;
       }
       fragColor = texture(uImage, clamp(source / uResolution, vec2(0.0), vec2(1.0)));
     }`;
@@ -280,7 +303,7 @@
     gl.uniform1f(gl.getUniformLocation(effectProgram, 'uStrokeSeed'), state.strokeSeed);
     gl.uniform2f(gl.getUniformLocation(effectProgram, 'uDirection'), state.direction.x, state.direction.y);
     gl.uniform1i(gl.getUniformLocation(effectProgram, 'uGlow'), $('warmGlow').checked ? 1 : 0);
-    gl.uniform1i(gl.getUniformLocation(effectProgram, 'uMode'), ['smear','swirl','bulge','disperse','paint','water','smoke','particle','fragment','wind','dissolve'].indexOf(state.brush));
+    gl.uniform1i(gl.getUniformLocation(effectProgram, 'uMode'), ['smear','swirl','bulge','disperse','paint','water','smoke','particle','fragment','wind','dissolve','glitch'].indexOf(state.brush));
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     active = next;
     state.dirty = true;

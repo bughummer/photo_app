@@ -7,7 +7,7 @@
   "scripts": {
     "start": "electron .",
     "web": "node server.cjs",
-    "check": "node --check electron.cjs && node --check server.cjs && node --check particles.js && node --check app.js"
+    "check": "node --check electron.cjs && node --check server.cjs && node --check particles.js && node --check brush-examples.js && node --check app.js"
   },
   "devDependencies": {
     "electron": "^39.0.0"
