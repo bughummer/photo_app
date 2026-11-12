@@ -6,6 +6,7 @@
   const gl = canvas.getContext('webgl2', { preserveDrawingBuffer: true, premultipliedAlpha: false });
   const $ = id => document.getElementById(id);
   const state = { ready: false, brush: 'smear', size: 120, strength: 0.5, dragging: false, pointer: null, momentum: null, history: [], seed: 0, strokeSeed: 0, direction: { x: 1, y: 0 }, brushTexture: null, brushBitmap: null, brushCanvas: null, brushMaskPixels: null, brushMode: null, dirty: false };
+  let brushOperation = 0;
   if (!gl) {
     $('empty').querySelector('p').textContent = 'This app needs a browser or graphics driver with WebGL 2 support.';
     return;
@@ -376,6 +377,20 @@
       setButtons();
     } catch (error) { alert(`Could not open this image: ${error.message}`); }
   }
+  function applyBrushMask(brushCanvas, image, mode, label) {
+    const texture = makeTexture(brushCanvas);
+    if (state.brushTexture) gl.deleteTexture(state.brushTexture);
+    state.brushTexture = texture;
+    state.brushCanvas = brushCanvas;
+    state.brushMaskPixels = image;
+    state.brushMode = mode;
+    $('brushPreview').src = brushCanvas.toDataURL('image/png');
+    $('brushPreview').hidden = false;
+    $('brushStatus').textContent = label;
+    $('maskSource').disabled = mode === 'generated';
+    $('saveBrush').disabled = false;
+    $('clearBrush').disabled = false;
+  }
   function makeBrushFromImage(bitmap, mode) {
     const brushCanvas = document.createElement('canvas');
     brushCanvas.width = brushCanvas.height = 256;
@@ -398,25 +413,76 @@
     }
     if (visible < 1) throw new Error('This selection produces an empty brush. Try another image mode.');
     context.putImageData(image, 0, 0);
-    const texture = makeTexture(brushCanvas);
-    if (state.brushTexture) gl.deleteTexture(state.brushTexture);
-    state.brushTexture = texture;
-    state.brushCanvas = brushCanvas;
-    state.brushMaskPixels = image;
-    state.brushMode = mode;
-    $('brushPreview').src = brushCanvas.toDataURL('image/png');
-    $('brushPreview').hidden = false;
-    $('brushStatus').textContent = 'Custom PNG brush';
-    $('maskSource').disabled = false;
-    $('saveBrush').disabled = false;
-    $('clearBrush').disabled = false;
+    applyBrushMask(brushCanvas, image, mode, 'Imported PNG brush');
+  }
+  function generateBrush() {
+    brushOperation++;
+    const size = 256;
+    const seedValue = Number($('shapeSeed').value);
+    const seed = Number.isFinite(seedValue) ? Math.max(0, Math.min(999999999, Math.floor(seedValue))) : 1;
+    $('shapeSeed').value = seed;
+    const complexity = Number($('shapeComplexity').value) / 100;
+    const roughness = Number($('shapeRoughness').value) / 100;
+    const texture = Number($('shapeTexture').value) / 100;
+    const softness = Number($('shapeSoftness').value) / 100;
+    const hash = (x, y, salt) => {
+      let value = Math.imul(x | 0, 374761393) + Math.imul(y | 0, 668265263) + Math.imul((seed + salt) | 0, 1442695041);
+      value = Math.imul(value ^ (value >>> 13), 1274126177);
+      return ((value ^ (value >>> 16)) >>> 0) / 4294967295;
+    };
+    const noise = (x, y, salt) => {
+      const ix = Math.floor(x), iy = Math.floor(y);
+      const fx = x - ix, fy = y - iy;
+      const sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);
+      const top = hash(ix, iy, salt) * (1 - sx) + hash(ix + 1, iy, salt) * sx;
+      const bottom = hash(ix, iy + 1, salt) * (1 - sx) + hash(ix + 1, iy + 1, salt) * sx;
+      return top * (1 - sy) + bottom * sy;
+    };
+    const brushCanvas = document.createElement('canvas');
+    brushCanvas.width = brushCanvas.height = size;
+    const context = brushCanvas.getContext('2d', { willReadFrequently: true });
+    const image = context.createImageData(size, size);
+    const lobes = 3 + Math.round(complexity * 14);
+    const phase = hash(1, 0, 1) * Math.PI * 2;
+    const phase2 = hash(2, 0, 2) * Math.PI * 2;
+    const phase3 = hash(3, 0, 3) * Math.PI * 2;
+    const stretchX = 0.88 + hash(4, 0, 4) * 0.24;
+    const stretchY = 0.88 + hash(5, 0, 5) * 0.24;
+    const edgeWidth = 1.5 + softness * 24;
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const dx = (x + 0.5 - 128) / stretchX;
+        const dy = (y + 0.5 - 128) / stretchY;
+        const angle = Math.atan2(dy, dx);
+        const wave = Math.sin(angle * lobes + phase) * 0.55
+          + Math.sin(angle * (lobes + 3) + phase2) * 0.3
+          + Math.sin(angle * (lobes * 2 + 1) + phase3) * 0.15;
+        const radius = 91 * (1 + roughness * wave * 0.38);
+        const distance = Math.hypot(dx, dy);
+        const edge = Math.max(0, Math.min(1, (radius - distance) / edgeWidth + 0.5));
+        if (edge <= 0) continue;
+        const broad = noise(x / 21, y / 21, 10);
+        const fine = noise(x / 5, y / 5, 11);
+        const holes = Math.max(0, Math.min(1, (broad - (0.13 + texture * 0.24)) / 0.19));
+        const grain = 1 - texture * (0.52 * (1 - fine) + 0.75 * (1 - holes));
+        const pixel = (y * size + x) * 4;
+        image.data[pixel] = image.data[pixel + 1] = image.data[pixel + 2] = 255;
+        image.data[pixel + 3] = Math.round(255 * edge * Math.max(0, grain));
+      }
+    }
+    context.putImageData(image, 0, 0);
+    if (state.brushBitmap) state.brushBitmap.close();
+    state.brushBitmap = null;
+    applyBrushMask(brushCanvas, image, 'generated', `Generated brush · seed ${seed}`);
   }
   async function loadBrush(file) {
     if (!file) return;
     if (file.type !== 'image/png') { alert('Choose a PNG image for the brush.'); return; }
+    const operation = ++brushOperation;
     let bitmap;
     try {
       bitmap = await createImageBitmap(file);
+      if (operation !== brushOperation) { bitmap.close(); return; }
       const sample = document.createElement('canvas');
       sample.width = sample.height = 64;
       const context = sample.getContext('2d', { willReadFrequently: true });
@@ -513,13 +579,38 @@
 
   for (const id of ['openTop','openEmpty']) $(id).addEventListener('click', () => $('file').click());
   $('file').addEventListener('change', event => { loadImage(event.target.files[0]); event.target.value = ''; });
+  let pendingBrushUpdate = 0;
+  $('shapeSeed').value = crypto.getRandomValues(new Uint32Array(1))[0] % 1000000000;
+  const scheduleGeneratedBrush = () => {
+    if (state.brushMode !== 'generated') return;
+    cancelAnimationFrame(pendingBrushUpdate);
+    pendingBrushUpdate = requestAnimationFrame(generateBrush);
+  };
+  for (const id of ['shapeComplexity','shapeRoughness','shapeTexture','shapeSoftness']) {
+    $(id).addEventListener('input', event => {
+      $(`${id}Value`).value = `${event.target.value}%`;
+      scheduleGeneratedBrush();
+    });
+  }
+  $('shapeSeed').addEventListener('change', scheduleGeneratedBrush);
+  $('generateBrush').addEventListener('click', () => {
+    cancelAnimationFrame(pendingBrushUpdate);
+    generateBrush();
+  });
+  $('shuffleBrush').addEventListener('click', () => {
+    cancelAnimationFrame(pendingBrushUpdate);
+    $('shapeSeed').value = crypto.getRandomValues(new Uint32Array(1))[0] % 1000000000;
+    generateBrush();
+  });
   $('importBrush').addEventListener('click', () => $('brushFile').click());
-  $('brushFile').addEventListener('change', event => { loadBrush(event.target.files[0]); event.target.value = ''; });
+  $('brushFile').addEventListener('change', event => { cancelAnimationFrame(pendingBrushUpdate); loadBrush(event.target.files[0]); event.target.value = ''; });
   $('maskSource').addEventListener('change', event => {
     try { makeBrushFromImage(state.brushBitmap, event.target.value); }
     catch (error) { event.target.value = state.brushMode; alert(error.message); }
   });
   $('clearBrush').addEventListener('click', () => {
+    brushOperation++;
+    cancelAnimationFrame(pendingBrushUpdate);
     if (state.brushTexture) gl.deleteTexture(state.brushTexture);
     if (state.brushBitmap) state.brushBitmap.close();
     state.brushTexture = state.brushBitmap = state.brushCanvas = state.brushMaskPixels = state.brushMode = null;

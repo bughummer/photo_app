@@ -39,8 +39,23 @@
         <label class="toggle-row grid-option" for="warmGlow"><span><strong>Warm glow</strong><small>Add light to new Wind trails</small></span><input id="warmGlow" type="checkbox"><i aria-hidden="true"></i></label>
         <div class="divider"></div>
         <div class="section-label">BRUSH SHAPE</div>
-        <div class="brush-shape"><img id="brushPreview" alt="Custom brush shape preview" hidden><div><strong id="brushStatus">Round brush</strong><small>Import a PNG or make a brush from its dark, light, or transparent areas.</small></div></div>
-        <button id="importBrush" class="button shape-button">Create or import PNG brush</button>
+        <div class="brush-shape"><img id="brushPreview" alt="Brush shape preview" hidden><div><strong id="brushStatus">Round brush</strong><small>Generate a shape or import a PNG. It works with any effect.</small></div></div>
+        <div class="random-creator" role="group" aria-label="Random brush creator">
+          <div class="creator-heading"><strong>Random shape</strong><small>Choose the texture, then generate a variation.</small></div>
+          <label class="slider-label" for="shapeComplexity"><span>Complexity</span><output id="shapeComplexityValue">50%</output></label>
+          <input id="shapeComplexity" type="range" min="0" max="100" value="50">
+          <label class="slider-label" for="shapeRoughness"><span>Roughness</span><output id="shapeRoughnessValue">55%</output></label>
+          <input id="shapeRoughness" type="range" min="0" max="100" value="55">
+          <label class="slider-label" for="shapeTexture"><span>Texture</span><output id="shapeTextureValue">35%</output></label>
+          <input id="shapeTexture" type="range" min="0" max="100" value="35">
+          <label class="slider-label" for="shapeSoftness"><span>Soft edge</span><output id="shapeSoftnessValue">30%</output></label>
+          <input id="shapeSoftness" type="range" min="0" max="100" value="30">
+          <label class="slider-label seed-label" for="shapeSeed"><span>Seed</span></label>
+          <input id="shapeSeed" type="number" min="0" max="999999999" step="1" value="1" inputmode="numeric">
+          <div class="shape-actions"><button id="generateBrush" class="button" type="button">Generate brush</button><button id="shuffleBrush" class="button" type="button">New variation</button></div>
+        </div>
+        <div class="import-heading">OR IMPORT</div>
+        <button id="importBrush" class="button shape-button">Import PNG brush</button>
         <label class="slider-label mask-label" for="maskSource"><span>Use image</span></label>
         <select id="maskSource" disabled><option value="alpha">Transparency</option><option value="dark">Dark areas</option><option value="light">Light areas</option></select>
         <div class="shape-actions"><button id="saveBrush" class="button" disabled>Save brush PNG</button><button id="clearBrush" class="button" disabled>Use round</button></div>
