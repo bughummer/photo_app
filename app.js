@@ -200,6 +200,25 @@
         float coverage = (0.3 + block * 0.7) * falloff * uStrength;
         fragColor = vec4(mix(base.rgb, color, coverage), base.a);
         return;
+      } else if (uMode == 12) {
+        float paneWidth = max(20.0, uRadius * 0.42);
+        float pane = floor((p.x - uCenter.x) / paneWidth + 0.5);
+        float paneCenter = uCenter.x + pane * paneWidth;
+        float localX = p.x - paneCenter;
+        float side = hash(vec2(pane, uStrokeSeed * 0.13)) > 0.5 ? 1.0 : -1.0;
+        float reflectedX = paneCenter + side * abs(localX);
+        float slowWave = noise(vec2(p.y * 0.018, pane * 2.7 + uStrokeSeed * 0.11));
+        float fineWave = noise(vec2(p.y * 0.065, pane * 5.3 - uStrokeSeed * 0.07));
+        float bend = (slowWave - 0.5) * uRadius * 0.24 + (fineWave - 0.5) * uRadius * 0.055;
+        float ripple = sin(p.y * 0.085 + pane * 2.6 + slowWave * 5.0) * uRadius * 0.025;
+        vec2 samplePoint = vec2(reflectedX + bend + ripple - uDelta.x * 0.65,
+                                p.y + (slowWave - 0.5) * uRadius * 0.075 - uDelta.y * 0.25);
+        vec4 reflected = texture(uStrokeImage, clamp(samplePoint / uResolution, vec2(0.0), vec2(1.0)));
+        vec4 base = texture(uImage, clamp(p / uResolution, vec2(0.0), vec2(1.0)));
+        float seam = smoothstep(paneWidth * 0.5 - 2.0, paneWidth * 0.5, abs(localX));
+        vec3 glass = reflected.rgb * (1.0 - seam * 0.085);
+        fragColor = vec4(mix(base.rgb, glass, clamp(falloff * uStrength * 1.35, 0.0, 1.0)), base.a);
+        return;
       }
       fragColor = texture(uImage, clamp(source / uResolution, vec2(0.0), vec2(1.0)));
     }`;
@@ -303,7 +322,7 @@
     gl.uniform1f(gl.getUniformLocation(effectProgram, 'uStrokeSeed'), state.strokeSeed);
     gl.uniform2f(gl.getUniformLocation(effectProgram, 'uDirection'), state.direction.x, state.direction.y);
     gl.uniform1i(gl.getUniformLocation(effectProgram, 'uGlow'), $('warmGlow').checked ? 1 : 0);
-    gl.uniform1i(gl.getUniformLocation(effectProgram, 'uMode'), ['smear','swirl','bulge','disperse','paint','water','smoke','particle','fragment','wind','dissolve','glitch'].indexOf(state.brush));
+    gl.uniform1i(gl.getUniformLocation(effectProgram, 'uMode'), ['smear','swirl','bulge','disperse','paint','water','smoke','particle','fragment','wind','dissolve','glitch','mirror'].indexOf(state.brush));
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     active = next;
     state.dirty = true;

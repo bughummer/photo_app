@@ -82,6 +82,19 @@
         ctx.beginPath(); ctx.moveTo(3, 13 + i * 10);
         ctx.bezierCurveTo(18, 5 + i * 10, 29, 27 + i * 10, 62, 14 + i * 9); ctx.stroke();
       }
+    } else if (mode === 'mirror') {
+      ctx.globalAlpha = 0.75;
+      for (let i = 0; i < 4; i++) {
+        const x = 11 + i * 14;
+        ctx.strokeStyle = i % 2 ? '#c7f2df' : '#7cddd9';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(x, 2);
+        ctx.bezierCurveTo(x - 6, 17, x + 6, 27, x - 2, 52);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 0.7;
+      path(ctx, '#eead83', 2, [[10, 24], [20, 22], [31, 28], [42, 21], [54, 24]]);
     } else if (mode === 'smoke') {
       for (let i = 0; i < 5; i++) {
         ctx.strokeStyle = ink[i % 3]; ctx.globalAlpha = 0.35; ctx.lineWidth = 3 + i;
