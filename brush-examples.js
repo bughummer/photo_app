@@ -101,6 +101,20 @@
         ctx.beginPath(); ctx.moveTo(18 + i * 6, 51);
         ctx.bezierCurveTo(2 + i * 8, 32, 46 - i * 3, 20, 27 + i * 4, 2); ctx.stroke();
       }
+    } else if (mode === 'pointcloud') {
+      ctx.fillStyle = '#102c38';
+      ctx.fillRect(6, 5, 52, 45);
+      for (let y = 7; y < 49; y += 3) {
+        for (let x = 8; x < 57; x += 3) {
+          const head = Math.hypot((x - 30) / 10, (y - 21) / 12) < 1;
+          const body = y > 31 && Math.hypot((x - 32) / 19, (y - 52) / 22) < 1;
+          if (!head && !body && (x * 7 + y * 3) % 11 > 1) continue;
+          ctx.fillStyle = head ? '#e7b18e' : body ? '#80c5cf' : '#c7f2df';
+          ctx.globalAlpha = 0.45 + ((x + y) % 5) * 0.1;
+          const depth = (x * 3 + y) % 3;
+          ctx.fillRect(x + depth, y - depth, 1 + depth * 0.45, 1 + depth * 0.45);
+        }
+      }
     } else if (mode === 'particle') {
       for (let i = 0; i < 36; i++) {
         const a = i * 2.399, r = 4 + (i % 7) * 3;

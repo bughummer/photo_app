@@ -220,6 +220,11 @@
         vec3 glass = reflected.rgb * (1.0 - seam * 0.085);
         fragColor = vec4(mix(base.rgb, glass, clamp(falloff * uStrength * 1.35, 0.0, 1.0)), base.a);
         return;
+      } else if (uMode == 13) {
+        vec4 base = texture(uImage, clamp(p / uResolution, vec2(0.0), vec2(1.0)));
+        float veil = clamp(falloff * uStrength * 1.25, 0.0, 0.92);
+        fragColor = vec4(base.rgb * (1.0 - veil), base.a);
+        return;
       }
       fragColor = texture(uImage, clamp(source / uResolution, vec2(0.0), vec2(1.0)));
     }`;
@@ -323,7 +328,7 @@
     gl.uniform1f(gl.getUniformLocation(effectProgram, 'uStrokeSeed'), state.strokeSeed);
     gl.uniform2f(gl.getUniformLocation(effectProgram, 'uDirection'), state.direction.x, state.direction.y);
     gl.uniform1i(gl.getUniformLocation(effectProgram, 'uGlow'), $('warmGlow').checked ? 1 : 0);
-    gl.uniform1i(gl.getUniformLocation(effectProgram, 'uMode'), ['smear','swirl','bulge','disperse','paint','water','smoke','particle','fragment','wind','dissolve','glitch','mirror'].indexOf(state.brush));
+    gl.uniform1i(gl.getUniformLocation(effectProgram, 'uMode'), ['smear','swirl','bulge','disperse','paint','water','smoke','particle','fragment','wind','dissolve','glitch','mirror','pointcloud'].indexOf(state.brush));
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     active = next;
     state.dirty = true;
@@ -527,6 +532,7 @@
     if (state.brush === 'particle') particles.spawn(state.pointer, { x: 0, y: 0 }, brushRadius(), state.strength, state.brushMaskPixels, $('keepMoving').checked);
     if (state.brush === 'fragment') particles.spawnFragments(state.pointer, { x: 0, y: 0 }, brushRadius(), state.strength, state.brushMaskPixels, $('keepMoving').checked);
     if (state.brush === 'dissolve') particles.spawnDissolve(state.pointer, { x: 0, y: 0 }, brushRadius(), state.strength, state.brushMaskPixels, $('keepMoving').checked);
+    if (state.brush === 'pointcloud') particles.spawnPointCloud(state.pointer, { x: 0, y: 0 }, brushRadius(), state.strength, state.brushMaskPixels, $('keepMoving').checked);
     updateCursor(event);
   });
   canvas.addEventListener('pointermove', event => {
@@ -545,6 +551,7 @@
       if (state.brush === 'fragment') particles.spawnFragments(sample, stepDelta, brushRadius(), state.strength, state.brushMaskPixels, $('keepMoving').checked);
       if (state.brush === 'wind') particles.spawnWind(sample, stepDelta, brushRadius(), state.strength, state.brushMaskPixels, $('warmGlow').checked, $('keepMoving').checked);
       if (state.brush === 'dissolve') particles.spawnDissolve(sample, stepDelta, brushRadius(), state.strength, state.brushMaskPixels, $('keepMoving').checked);
+      if (state.brush === 'pointcloud') particles.spawnPointCloud(sample, stepDelta, brushRadius(), state.strength, state.brushMaskPixels, $('keepMoving').checked);
     }
     state.pointer = point;
     state.lastDelta = delta;
@@ -552,7 +559,7 @@
   function endStroke() {
     if (!state.dragging) return;
     state.dragging = false;
-    if (!['particle','fragment','wind','dissolve'].includes(state.brush) && $('keepMoving').checked && state.lastDelta && Math.hypot(state.lastDelta.x, state.lastDelta.y) > 1) {
+    if (!['particle','fragment','wind','dissolve','pointcloud'].includes(state.brush) && $('keepMoving').checked && state.lastDelta && Math.hypot(state.lastDelta.x, state.lastDelta.y) > 1) {
       state.momentum = { point: { ...state.pointer }, delta: { ...state.lastDelta }, life: 0 };
     }
     state.lastDelta = null;
@@ -654,7 +661,7 @@
     state.history.forEach(entry => gl.deleteTexture(entry.texture));
     state.history = [];
     copyTexture(original, textures[active]);
-    particles.restore({ particles: [], fragments: [], paintMarks: [], grid: null });
+    particles.restore({ particles: [], fragments: [], paintMarks: [], cloudPoints: [], grid: null });
     state.dirty = true;
     setButtons();
   });

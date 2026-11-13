@@ -5,6 +5,7 @@ class ParticleLayer {
     this.particles = [];
     this.fragments = [];
     this.paintMarks = [];
+    this.cloudPoints = [];
     this.grid = null;
     this.gridVisible = true;
     this.image = null;
@@ -25,6 +26,7 @@ class ParticleLayer {
     this.particles = [];
     this.fragments = [];
     this.paintMarks = [];
+    this.cloudPoints = [];
     this.grid = null;
     this.moving = false;
     this.render();
@@ -35,6 +37,7 @@ class ParticleLayer {
       particles: this.particles.map(particle => ({ ...particle })),
       fragments: this.fragments.map(fragment => ({ ...fragment })),
       paintMarks: this.paintMarks.map(mark => ({ ...mark })),
+      cloudPoints: this.cloudPoints.map(point => ({ ...point })),
       grid: this.grid ? { ...this.grid } : null
     };
   }
@@ -43,6 +46,7 @@ class ParticleLayer {
     this.particles = snapshot.particles.map(particle => ({ ...particle, energy: 0 }));
     this.fragments = snapshot.fragments.map(fragment => ({ ...fragment, energy: 0 }));
     this.paintMarks = (snapshot.paintMarks || []).map(mark => ({ ...mark, energy: 0 }));
+    this.cloudPoints = (snapshot.cloudPoints || []).map(point => ({ ...point, energy: 0 }));
     this.grid = snapshot.grid ? { ...snapshot.grid } : null;
     this.moving = false;
     this.render();
@@ -58,6 +62,7 @@ class ParticleLayer {
     for (const particle of this.particles) particle.energy = 0;
     for (const fragment of this.fragments) fragment.energy = 0;
     for (const mark of this.paintMarks) mark.energy = 0;
+    for (const point of this.cloudPoints) point.energy = 0;
   }
 
   spawn(point, delta, radius, strength, brushMask, animate) {
@@ -271,6 +276,61 @@ class ParticleLayer {
     this.dirty = true;
   }
 
+  spawnPointCloud(point, delta, radius, strength, brushMask, animate) {
+    if (!this.image) return;
+    const width = this.canvas.width;
+    const height = this.canvas.height;
+    const centerY = height - point.y;
+    const dx = delta.x;
+    const dy = -delta.y;
+    const count = Math.round(170 + strength * 250);
+    const phase = Math.random() * Math.PI * 2;
+    const mask = brushMask?.data;
+    for (let i = 0; i < count; i++) {
+      const angle = i * 2.399963 + phase;
+      const distance = Math.sqrt((i + 0.5) / count) * radius * 0.92;
+      const offsetX = Math.cos(angle) * distance;
+      const offsetY = Math.sin(angle) * distance;
+      if (mask) {
+        const mx = Math.max(0, Math.min(brushMask.width - 1, Math.floor((offsetX / (2 * radius) + 0.5) * brushMask.width)));
+        const my = Math.max(0, Math.min(brushMask.height - 1, Math.floor((offsetY / (2 * radius) + 0.5) * brushMask.height)));
+        if (Math.random() > mask[(my * brushMask.width + mx) * 4 + 3] / 255) continue;
+      }
+      const sx = point.x + offsetX;
+      const sy = centerY + offsetY;
+      if (sx < 0 || sy < 0 || sx >= width || sy >= height) continue;
+      const pixel = (Math.floor(sy) * width + Math.floor(sx)) * 4;
+      const alpha = this.image.data[pixel + 3] / 255;
+      if (alpha < 0.05 || Math.random() > alpha) continue;
+      const r = this.image.data[pixel];
+      const g = this.image.data[pixel + 1];
+      const b = this.image.data[pixel + 2];
+      const lum = (r * 0.2126 + g * 0.7152 + b * 0.0722) / 255;
+      const neighbor = (Math.floor(sy) * width + Math.min(width - 1, Math.floor(sx) + 3)) * 4;
+      const other = (this.image.data[neighbor] * 0.2126 + this.image.data[neighbor + 1] * 0.7152 + this.image.data[neighbor + 2] * 0.0722) / 255;
+      const edge = Math.abs(lum - other);
+      if (Math.random() > Math.min(1, 0.3 + lum * 0.45 + edge * 1.8)) continue;
+      const depth = 0.25 + Math.random() * 0.75;
+      const spread = radius * 0.22 * strength * depth;
+      const liftX = dx * (1 + depth * 2.5) * strength + Math.cos(angle) * spread;
+      const liftY = dy * (1 + depth * 2.5) * strength + Math.sin(angle) * spread;
+      this.cloudPoints.push({
+        x: sx + liftX, y: sy + liftY,
+        vx: dx * 0.06 * depth + Math.cos(angle) * 0.45 * depth * strength,
+        vy: dy * 0.06 * depth + Math.sin(angle) * 0.45 * depth * strength,
+        size: 0.7 + depth * 1.8 + strength * 0.35,
+        opacity: 0.52 + depth * 0.38,
+        r: Math.min(255, r * 1.12 + 9),
+        g: Math.min(255, g * 1.12 + 9),
+        b: Math.min(255, b * 1.12 + 9),
+        energy: 1
+      });
+    }
+    if (this.cloudPoints.length > 9000) this.cloudPoints.splice(0, this.cloudPoints.length - 9000);
+    this.moving = animate;
+    this.dirty = true;
+  }
+
   tick(animate) {
     let active = false;
     if (animate && this.moving) {
@@ -299,6 +359,13 @@ class ParticleLayer {
         mark.y += mark.vy * mark.energy;
         mark.angle += Math.sin(mark.x * 0.02 + mark.y * 0.015) * 0.004 * mark.energy;
         mark.energy *= 0.97;
+        active = true;
+      }
+      for (const point of this.cloudPoints) {
+        if (point.energy < 0.03) continue;
+        point.x += point.vx * point.energy;
+        point.y += point.vy * point.energy;
+        point.energy *= 0.974;
         active = true;
       }
       this.moving = active;
@@ -399,6 +466,11 @@ class ParticleLayer {
       context.beginPath();
       context.arc(particle.x, particle.y, particle.width, 0, Math.PI * 2);
       context.fill();
+    }
+    for (const point of this.cloudPoints) {
+      if (point.x < -3 || point.y < -3 || point.x > this.canvas.width + 3 || point.y > this.canvas.height + 3) continue;
+      context.fillStyle = `rgba(${point.r},${point.g},${point.b},${point.opacity})`;
+      context.fillRect(point.x - point.size / 2, point.y - point.size / 2, point.size, point.size);
     }
     if (this.grid && this.gridVisible) {
       const { x, y, radius } = this.grid;
