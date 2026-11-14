@@ -1,5 +1,6 @@
 const { app, BrowserWindow } = require('electron');
-const path = require('node:path');
+const { server } = require('./server.cjs');
+let baseUrl;
 
 function createWindow() {
   const window = new BrowserWindow({
@@ -14,15 +15,19 @@ function createWindow() {
       sandbox: true
     }
   });
-  window.loadFile(path.join(__dirname, 'index.html'));
+  window.loadURL(`${baseUrl}/index.html`);
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  baseUrl = `http://127.0.0.1:${server.address().port}`;
   createWindow();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
+
+app.on('before-quit', () => server.close());
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();

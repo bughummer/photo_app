@@ -3,7 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const root = __dirname;
-const types = { '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript' };
+const types = { '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript', '.mjs': 'text/javascript' };
 const server = http.createServer((request, response) => {
   const pathname = new URL(request.url, 'http://localhost').pathname;
   const file = path.resolve(root, `.${pathname === '/' ? '/index.html' : pathname}`);
@@ -17,5 +17,9 @@ const server = http.createServer((request, response) => {
   });
 });
 
-const port = Number(process.env.PORT || 4173);
-server.listen(port, '127.0.0.1', () => console.log(`Photo Flow running on http://127.0.0.1:${port}`));
+module.exports = { server };
+
+if (require.main === module) {
+  const port = Number(process.env.PORT || 4173);
+  server.listen(port, '127.0.0.1', () => console.log(`Photo Flow running on http://127.0.0.1:${port}`));
+}
