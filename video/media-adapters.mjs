@@ -50,6 +50,10 @@ export class VideoMediaAdapter {
     return bitmap;
   }
 
+  async echoFramesAt(time, params, signal) {
+    return this.worker.request('echoPreview', { time: clampTime(time, this.duration), params }, null, signal);
+  }
+
   seek(time) { this.element.currentTime = clampTime(time, this.duration); }
   play() { return this.element.play(); }
   pause() { this.element.pause(); }

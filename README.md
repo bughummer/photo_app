@@ -27,3 +27,7 @@ In Video Studio, open a video and choose **Spacetime Cube** from the Effect menu
 ## Slit Scan
 
 Open a video in Video Studio and choose **Slit Scan**. Select a time interval, frame count, and preview width, then choose **Generate scan**. A vertical scan line makes time run left to right; a horizontal line makes time run top to bottom. Set Line start and Line end to the same position for a fixed slit, or separate them to sweep the line across the image as time passes. Scan width averages nearby pixels. Adjusting direction, position, or width updates the sampled result without decoding the video again. **Save Slit Scan PNG** exports the still image locally.
+
+## Temporal Echoes
+
+Choose **Temporal Echoes** in Video Studio to make moving parts of a clip leave fading copies of their earlier positions. Adjust the number of echoes, time between them, trail strength, and motion threshold. Play or scrub the video to preview the effect. **Save frame PNG** saves the current echoed frame, and **Export MP4** renders the echoed clip while copying compatible original AAC audio. Processing stays local. Echo MP4 export is capped at a 720-pixel working size to keep its frame history bounded.

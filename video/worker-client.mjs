@@ -5,7 +5,7 @@ export class VideoWorkerClient {
     this.nextId = 1;
     this.worker.onmessage = ({ data }) => {
       const pending = this.pending.get(data.id);
-      if (!pending) { data.value?.bitmap?.close(); return; }
+      if (!pending) { data.value?.bitmap?.close(); data.value?.frames?.forEach(frame => frame.bitmap.close()); return; }
       if (data.type === 'progress') { pending.onProgress?.(data.value); return; }
       this.pending.delete(data.id);
       if (data.error) pending.reject(new Error(data.error));

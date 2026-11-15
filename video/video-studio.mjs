@@ -5,6 +5,8 @@ import { WebGL2VideoRenderer } from './webgl2-renderer.mjs';
 import { TemporalEffectsEngine } from './temporal-engine.mjs';
 import { SpacetimeViewer } from './spacetime-viewer.mjs';
 import { composeSlitScanAsync } from './slit-scan.mjs';
+import { EchoWebGLRenderer } from './echo-renderer.mjs';
+import { EchoPlaybackHistory, normalizeEchoParams } from './temporal-echoes.mjs';
 
 const $ = id => document.getElementById(id);
 const video = $('sourceVideo');
@@ -25,6 +27,50 @@ let temporal = null;
 let cube = null;
 const isCube = () => $('videoEffect').value === 'spacetime';
 const isSlit = () => $('videoEffect').value === 'slit-scan';
+const isEcho = () => $('videoEffect').value === 'temporal-echoes';
+let echoRenderer = null;
+let echoHistory = null;
+let echoSeekAbort = null;
+
+function echoOptions() {
+  return normalizeEchoParams({ count: $('echoCount').value, gap: $('echoGap').value,
+    strength: Number($('echoStrength').value) / 100, threshold: Number($('echoThreshold').value) / 100 });
+}
+
+function updateEchoLabels() {
+  $('echoCountValue').value = $('echoCount').value;
+  $('echoGapValue').value = `${Number($('echoGap').value).toFixed(2)} s`;
+  $('echoStrengthValue').value = `${$('echoStrength').value}%`;
+  $('echoThresholdValue').value = `${$('echoThreshold').value}%`;
+}
+
+function restoreEchoParameters() {
+  const saved = temporal?.getParameters('temporal-echoes');
+  if (saved) {
+    const params = normalizeEchoParams(saved);
+    $('echoCount').value = String(params.count);
+    $('echoGap').value = String(params.gap);
+    $('echoStrength').value = String(Math.round(params.strength * 100));
+    $('echoThreshold').value = String(Math.round(params.threshold * 100));
+  }
+  updateEchoLabels();
+}
+
+function disposeEcho() {
+  echoSeekAbort?.abort(); echoSeekAbort = null;
+  echoHistory?.dispose(); echoHistory = null;
+  echoRenderer?.dispose(); echoRenderer = null;
+  $('echoCanvas').width = $('echoCanvas').height = 0;
+}
+
+function ensureEcho() {
+  if (echoRenderer || !media) return;
+  const scale = Math.min(1, 640 / Math.max(media.width, media.height));
+  const width = Math.max(2, Math.round(media.width * scale));
+  const height = Math.max(2, Math.round(media.height * scale));
+  echoRenderer = new EchoWebGLRenderer($('echoCanvas'), width, height);
+  echoHistory = new EchoPlaybackHistory(width, height);
+}
 let slitVolume = null;
 let slitAbort = null;
 let slitGeneration = 0;
@@ -94,15 +140,18 @@ function restoreCubeParameters() {
   for (const id of ['cubePosition', 'cubeOpacity', 'cubeScale', 'cubeSpacing']) $(id + 'Value').value = `${$(id).value}%`;
 }
 
-function syncEffectControls() {
+function syncEffectControls(announce = true) {
   const temporalEffect = isCube() || isSlit();
-  $('frameEffectControls').hidden = temporalEffect;
+  $('frameEffectControls').hidden = temporalEffect || isEcho();
+  $('echoControls').hidden = !isEcho();
   $('slitControls').hidden = !isSlit();
   $('cubeControls').hidden = !isCube();
   $('cubeViewport').hidden = !isCube();
   $('slitCanvas').hidden = !isSlit();
+  $('echoCanvas').hidden = !isEcho();
   $('videoCanvas').parentElement.classList.toggle('cube-active', isCube());
   $('videoCanvas').parentElement.classList.toggle('slit-active', isSlit());
+  $('videoCanvas').parentElement.classList.toggle('echo-active', isEcho());
   $('exportVideo').disabled = exporting || temporalEffect || !media?.exportAvailable;
   $('extractFrame').disabled = temporalEffect || !media;
   $('playVideo').disabled = temporalEffect || !media;
@@ -118,9 +167,12 @@ function syncEffectControls() {
       catch (error) { status(error.message, true); return; }
     }
     cube.resize();
-    status(cube.volume ? 'Drag to rotate, Shift drag to pan, or scroll to zoom.' : 'Choose an interval and generate a spacetime volume.');
+    if (announce) status(cube.volume ? 'Drag to rotate, Shift drag to pan, or scroll to zoom.' : 'Choose an interval and generate a spacetime volume.');
   } else if (isSlit() && media) {
-    status(slitVolume ? 'Adjust the line position, width, or direction to explore the scan.' : 'Choose an interval and generate a slit scan.');
+    if (announce) status(slitVolume ? 'Adjust the line position, width, or direction to explore the scan.' : 'Choose an interval and generate a slit scan.');
+  } else if (isEcho() && media) {
+    try { ensureEcho(); if (announce) status('Temporal Echoes ready. Play or scrub to explore the trails.'); }
+    catch (error) { status(error.message, true); }
   } else if (media) scheduleExtract(video.currentTime);
 }
 
@@ -141,8 +193,16 @@ function updateTime(time = video.currentTime) {
 }
 
 function renderLive() {
-  if (!media || !renderer || video.readyState < 2) return;
-  renderer.render(video, effect);
+  if (!media || video.readyState < 2) return;
+  if (isEcho()) {
+    if (!echoRenderer) return;
+    const params = echoOptions(), time = video.currentTime;
+    echoRenderer.render(video, echoHistory.sourcesAt(time, params), params);
+    echoHistory.capture(video, time, params);
+  } else {
+    if (!renderer) return;
+    renderer.render(video, effect);
+  }
   updateTime();
 }
 
@@ -168,6 +228,29 @@ async function renderExtracted(time) {
   if (!media || !renderer) return;
   const version = ++seekVersion;
   const current = media;
+  if (isEcho()) {
+    ensureEcho();
+    echoSeekAbort?.abort();
+    const controller = new AbortController();
+    echoSeekAbort = controller;
+    const params = echoOptions();
+    let result;
+    try {
+      result = await current.echoFramesAt(time, params, controller.signal);
+      if (version !== seekVersion || current !== media || !isEcho()) return;
+      const frame = result.frames.find(item => item.age === 0);
+      const histories = Array.from({ length: params.count }, (_, index) => result.frames.find(item => item.age === index + 1)?.bitmap || null);
+      echoRenderer.render(frame.bitmap, histories, params);
+      echoHistory.clear();
+      for (const item of result.frames) echoHistory.capture(item.bitmap, item.time, params);
+      updateTime(time);
+      status(`Temporal Echoes frame at ${time.toFixed(2)} s. Play or scrub to explore the trails.`);
+    } finally {
+      result?.frames.forEach(item => item.bitmap.close());
+      if (echoSeekAbort === controller) echoSeekAbort = null;
+    }
+    return;
+  }
   const frame = await current.frameAt(time);
   if (version !== seekVersion || current !== media) return;
   renderer.render(frame, effect);
@@ -176,7 +259,7 @@ async function renderExtracted(time) {
 
 function scheduleExtract(time) {
   clearTimeout(seekTimer);
-  seekTimer = setTimeout(() => renderExtracted(time).catch(error => status(error.message, true)), 70);
+  seekTimer = setTimeout(() => renderExtracted(time).catch(error => { if (error.name !== 'AbortError') status(error.message, true); }), 70);
 }
 
 function closeMedia() {
@@ -184,6 +267,8 @@ function closeMedia() {
   seekVersion++;
   clearTimeout(seekTimer);
   stopFrameLoop();
+  disposeEcho();
+  $('echoCanvas').hidden = true;
   slitGeneration++; slitRenderVersion++;
   clearTimeout(slitTimer);
   slitAbort?.abort(); slitAbort = null;
@@ -206,7 +291,7 @@ function closeMedia() {
   renderer?.dispose();
   renderer = null;
   $('videoEmpty').textContent = 'Open a video to preview its frames.';
-  $('videoCanvas').parentElement.classList.remove('loaded', 'cube-active', 'slit-active');
+  $('videoCanvas').parentElement.classList.remove('loaded', 'cube-active', 'slit-active', 'echo-active');
   $('playVideo').textContent = 'Play';
   controls(false);
 }
@@ -224,6 +309,7 @@ async function openFile(file) {
     if (openedSession !== session) return;
     renderer = new WebGL2VideoRenderer(canvas, details.width, details.height);
     temporal = new TemporalEffectsEngine(next);
+    restoreEchoParameters();
     $('slitStartTime').value = '0';
     $('slitEndTime').value = String(details.duration);
     restoreSlitParameters();
@@ -237,9 +323,9 @@ async function openFile(file) {
     $('videoTimeline').value = 0;
     $('videoDetails').textContent = `${file.name} · ${details.width} × ${details.height} working size · ${formatTime(details.duration)} · ${details.hasAudio ? 'audio track' : 'no audio track'}`;
     controls(true, details.exportAvailable);
-    await renderExtracted(0);
     syncEffectControls();
-    if (!isCube() && !isSlit()) status(details.exportAvailable ? 'Ready. Drag on the frame to position the effect, or scrub the timeline.' : `Preview ready. ${details.exportReason} Frame PNG export is available.`);
+    await renderExtracted(0);
+    if (!isCube() && !isSlit() && !isEcho()) status(details.exportAvailable ? 'Ready. Drag on the frame to position the effect, or scrub the timeline.' : `Preview ready. ${details.exportReason} Frame PNG export is available.`);
   } catch (error) {
     closeMedia();
     $('videoEmpty').textContent = error.message;
@@ -271,12 +357,14 @@ $('videoTimeline').addEventListener('input', event => {
 
 function updateEffect() {
   const name = $('videoEffect').value;
+  if (name !== 'temporal-echoes' && echoRenderer) disposeEcho();
   if (name !== 'slit-scan') {
     slitGeneration++; clearTimeout(slitTimer); slitAbort?.abort(); slitAbort = null;
     if (slitSampling) { temporal?.cancel(); slitSampling = false; $('slitCancel').disabled = true; }
     if (slitVolume) { slitVolume = null; $('slitExport').disabled = true; $('slitCanvas').width = 0; $('slitCanvas').height = 0; if (!cube?.volume) temporal?.clear(); }
   }
   if (name === 'spacetime' || name === 'slit-scan') { syncEffectControls(); return; }
+  if (name === 'temporal-echoes') { syncEffectControls(); if (media) { if (video.paused) scheduleExtract(video.currentTime); else renderLive(); } return; }
   const defaultDrag = name === 'smear' && !effect.deltaX && !effect.deltaY ? { deltaX: 0.08 } : {};
   effect = normalizeEffect({ ...effect, ...defaultDrag, name, radius: Number($('videoSize').value) / 100, strength: Number($('videoStrength').value) / 100 });
   $('videoSizeValue').value = `${$('videoSize').value}%`;
@@ -286,6 +374,11 @@ function updateEffect() {
   syncEffectControls();
 }
 for (const id of ['videoEffect', 'videoSize', 'videoStrength']) $(id).addEventListener(id === 'videoEffect' ? 'change' : 'input', updateEffect);
+for (const id of ['echoCount', 'echoGap', 'echoStrength', 'echoThreshold']) $(id).addEventListener('input', () => {
+  updateEchoLabels();
+  temporal?.saveParameters('temporal-echoes', echoOptions());
+  if (media && isEcho()) { if (video.paused) scheduleExtract(video.currentTime); else renderLive(); }
+});
 for (const id of ['slitStartTime', 'slitEndTime', 'slitCount', 'slitWidth']) $(id).addEventListener('input', updateSlitMemory);
 for (const id of ['slitDirection', 'slitLineStart', 'slitLineEnd', 'slitBand']) $(id).addEventListener('input', () => {
   updateSlitLabels();
@@ -427,7 +520,8 @@ $('extractFrame').addEventListener('click', async () => {
   if (!media) return;
   try {
     await renderExtracted(video.currentTime);
-    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+    const target = isEcho() ? $('echoCanvas') : canvas;
+    const blob = await new Promise(resolve => target.toBlob(resolve, 'image/png'));
     if (!blob) throw new Error('Could not make a PNG from this frame.');
     download(blob, 'photo-flow-frame.png');
     status(`Saved a frame at ${formatTime(video.currentTime)}.`);
@@ -443,11 +537,12 @@ $('exportVideo').addEventListener('click', async () => {
   $('exportVideo').disabled = true;
   status('Exporting MP4 locally… 0%');
   try {
-    const { buffer, audioWarning } = await media.export(effect, progress => status(`Exporting MP4 locally… ${Math.round(progress * 100)}%`));
+    const exportEffect = isEcho() ? { name: 'temporal-echoes', ...echoOptions() } : effect;
+    const { buffer, audioWarning } = await media.export(exportEffect, progress => status(`Exporting MP4 locally… ${Math.round(progress * 100)}%`));
     download(new Blob([buffer], { type: 'video/mp4' }), 'photo-flow-video.mp4');
     status(audioWarning || 'MP4 exported with original AAC audio when present.');
   } catch (error) { status(error.message, true); }
-  finally { exporting = false; syncEffectControls(); }
+  finally { exporting = false; syncEffectControls(false); }
 });
 
 window.addEventListener('beforeunload', closeMedia);

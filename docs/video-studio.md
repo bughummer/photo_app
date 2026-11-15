@@ -22,6 +22,10 @@ Tests include timestamp ordering, X/Y/Z mapping, cancellation and restart, GPU t
 
 `video/slit-scan.mjs` composes from the same packed temporal volume as Spacetime Cube. A vertical slit maps output X to increasing time and preserves source Y. A horizontal slit maps output Y to increasing time and preserves source X. The user can set fixed or independently moving start and end scan-line positions; scan width averages nearby source pixels. The temporal output axis is at least as long as the sampled depth, so no sample is skipped solely because the source image is narrow. Composition yields every 16 output columns or rows and can be canceled. Changes to scan direction, position, or width recompute from the sampled volume without another decode. `video/video-studio.mjs` adds these controls inside the existing effect selector and exports the result as a PNG. The same worker memory limit and interval validation apply; the PNG remains local.
 
+## Temporal Echoes extension
+
+`video/temporal-echoes.mjs` defines bounded parameters, deterministic earlier-frame timestamps, and a 64 MiB playback history. `video/echo-renderer.mjs` blends up to four historical frames with the current frame in WebGL2, using pixel difference to reduce trails in stationary areas. Timeline seeking asks the existing Mediabunny worker for frames at exact requested timestamps and closes the transferred `ImageBitmap` objects after upload. Live playback uses a bounded ring of recent frames. The existing MP4 exporter selects this renderer for Temporal Echoes and copies AAC packets through its existing audio path; its echo working size is capped at 720 pixels on the longest side. Browser tests verify an altered moving frame, timeline sampling, playback, PNG, baked MP4 output, and preserved audio.
+
 | Effects | Stage 1 video use | Reason |
 | --- | --- | --- |
 | Fluid smear, Swirl, Bulge, Disperse, Paint pull, Water lens, Smoke, Digital glitch, Mirror distortion | Yes | The shader can transform one decoded frame at a time. Fluid smear uses a drag direction. |

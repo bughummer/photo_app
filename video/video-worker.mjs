@@ -2,6 +2,8 @@ import { Input, ALL_FORMATS, BlobSource, VideoSampleSink, Output, Mp4OutputForma
 import { frameTimes, clampTime } from './timeline.mjs';
 import { WebGL2VideoRenderer } from './webgl2-renderer.mjs';
 import { samplingSchedule, setFrame } from './temporal-mapping.mjs';
+import { EchoWebGLRenderer } from './echo-renderer.mjs';
+import { echoFrameTimes, EchoPlaybackHistory, normalizeEchoParams } from './temporal-echoes.mjs';
 
 let input = null;
 let track = null;
@@ -100,14 +102,49 @@ async function sampleRange(options, requestId) {
   } finally { canceledRanges.delete(requestId); }
 }
 
+async function extractEcho(time, rawParams, requestId) {
+  if (!track) throw new Error('Open a video before extracting echoes.');
+  const params = normalizeEchoParams(rawParams);
+  const schedule = echoFrameTimes(time, duration, params);
+  const scale = Math.min(1, 640 / Math.max(previewCanvas.width, previewCanvas.height));
+  const width = Math.max(2, Math.round(previewCanvas.width * scale));
+  const height = Math.max(2, Math.round(previewCanvas.height * scale));
+  const canvas = new OffscreenCanvas(width, height);
+  const context = canvas.getContext('2d');
+  const samples = new VideoSampleSink(track);
+  const frames = [];
+  try {
+    let index = 0;
+    for await (const sample of samples.samplesAtTimestamps(schedule.map(item => item.time))) {
+      if (canceledRanges.has(requestId)) throw new Error('Echo preview canceled.');
+      if (!sample) throw new Error(`No frame was decoded at ${schedule[index].time.toFixed(3)} seconds.`);
+      try {
+        context.clearRect(0, 0, width, height);
+        sample.draw(context, 0, 0, width, height);
+        frames.push({ age: schedule[index].age, time: schedule[index].time, bitmap: await createImageBitmap(canvas) });
+      } finally { sample.close(); }
+      index++;
+    }
+    if (frames.length !== schedule.length || canceledRanges.has(requestId)) throw new Error('Echo preview was interrupted.');
+    return { width, height, frames };
+  } catch (error) {
+    for (const frame of frames) frame.bitmap.close();
+    throw error;
+  } finally { canceledRanges.delete(requestId); }
+}
+
 async function exportVideo(effect, requestId) {
   if (!file) throw new Error('Open a video before exporting.');
   if (duration > 60) throw new Error('Stage 1 export is limited to 60 seconds. Trim the clip first or choose a shorter video.');
-  const width = previewCanvas.width, height = previewCanvas.height;
+  const echo = effect?.name === 'temporal-echoes';
+  const scale = echo ? Math.min(1, 720 / Math.max(previewCanvas.width, previewCanvas.height)) : 1;
+  const width = Math.max(2, Math.floor(previewCanvas.width * scale / 2) * 2);
+  const height = Math.max(2, Math.floor(previewCanvas.height * scale / 2) * 2);
   if (typeof VideoEncoder === 'undefined' || !await canEncodeVideo('avc', { width, height, frameRate: 24 })) throw new Error('This browser cannot encode H.264 MP4 at the working resolution.');
   const exportInput = new Input({ source: new BlobSource(file), formats: ALL_FORMATS });
   let output = null;
   let renderer = null;
+  let history = null;
   try {
     const videoTrack = await exportInput.getPrimaryVideoTrack();
     const audioTrack = await exportInput.getPrimaryAudioTrack();
@@ -115,7 +152,8 @@ async function exportVideo(effect, requestId) {
     const target = new BufferTarget();
     output = new Output({ format, target });
     const canvas = new OffscreenCanvas(width, height);
-    renderer = new WebGL2VideoRenderer(canvas, width, height);
+    renderer = echo ? new EchoWebGLRenderer(canvas, width, height) : new WebGL2VideoRenderer(canvas, width, height);
+    if (echo) history = new EchoPlaybackHistory(width, height);
     const source = new CanvasSource(canvas, { codec: 'avc', bitrate: 4_000_000, keyFrameInterval: 2 });
     output.addVideoTrack(source);
     let audioSource = null;
@@ -147,7 +185,10 @@ async function exportVideo(effect, requestId) {
       try {
         frameContext.clearRect(0, 0, width, height);
         sample.draw(frameContext, 0, 0, width, height);
-        renderer.render(frameCanvas, effect);
+        if (echo) {
+          renderer.render(frameCanvas, history.sourcesAt(timestamps[index], effect), effect);
+          history.capture(frameCanvas, timestamps[index], effect);
+        } else renderer.render(frameCanvas, effect);
         await source.add(timestamps[index], Math.min(1 / 24, duration - timestamps[index]));
       } finally {
         sample.close();
@@ -166,6 +207,7 @@ async function exportVideo(effect, requestId) {
     if (output && output.state !== 'finalized' && output.state !== 'canceled') await output.cancel();
     throw error;
   } finally {
+    history?.dispose();
     renderer?.dispose();
     exportInput.dispose();
   }
@@ -183,6 +225,11 @@ self.onmessage = async ({ data }) => {
       decodeQueue = task.catch(() => {});
       const bitmap = await task;
       self.postMessage({ id, value: { bitmap }, }, [bitmap]);
+    } else if (type === 'echoPreview') {
+      const task = decodeQueue.then(() => extractEcho(data.time, data.params, id));
+      decodeQueue = task.catch(() => {});
+      const result = await task;
+      self.postMessage({ id, value: result }, result.frames.map(frame => frame.bitmap));
     } else if (type === 'export') {
       const result = await exportVideo(data.effect, id);
       self.postMessage({ id, value: result }, [result.buffer]);
