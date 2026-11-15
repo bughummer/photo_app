@@ -18,6 +18,10 @@ The preview defaults to 320 pixels wide, 180 pixels high for 16:9 video, and 120
 
 Tests include timestamp ordering, X/Y/Z mapping, cancellation and restart, GPU texture disposal, all rendering modes, a direct comparison between an XY slice and a decoded frame, and a small local fixture with a stationary background and two moving pedestrian silhouettes. The fixture verifies stable background structures and distinct XZ trajectories. `tests/spacetime-browser.test.mjs` also samples the default 320 × 180 × 120 preview while measuring main-thread timer activity.
 
+## Slit Scan extension
+
+`video/slit-scan.mjs` composes from the same packed temporal volume as Spacetime Cube. A vertical slit maps output X to increasing time and preserves source Y. A horizontal slit maps output Y to increasing time and preserves source X. The user can set fixed or independently moving start and end scan-line positions; scan width averages nearby source pixels. The temporal output axis is at least as long as the sampled depth, so no sample is skipped solely because the source image is narrow. Composition yields every 16 output columns or rows and can be canceled. Changes to scan direction, position, or width recompute from the sampled volume without another decode. `video/video-studio.mjs` adds these controls inside the existing effect selector and exports the result as a PNG. The same worker memory limit and interval validation apply; the PNG remains local.
+
 | Effects | Stage 1 video use | Reason |
 | --- | --- | --- |
 | Fluid smear, Swirl, Bulge, Disperse, Paint pull, Water lens, Smoke, Digital glitch, Mirror distortion | Yes | The shader can transform one decoded frame at a time. Fluid smear uses a drag direction. |

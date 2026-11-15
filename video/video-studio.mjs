@@ -4,6 +4,7 @@ import { VideoMediaAdapter } from './media-adapters.mjs';
 import { WebGL2VideoRenderer } from './webgl2-renderer.mjs';
 import { TemporalEffectsEngine } from './temporal-engine.mjs';
 import { SpacetimeViewer } from './spacetime-viewer.mjs';
+import { composeSlitScanAsync } from './slit-scan.mjs';
 
 const $ = id => document.getElementById(id);
 const video = $('sourceVideo');
@@ -23,6 +24,45 @@ let effect = normalizeEffect({ name: 'none', radius: 0.35, strength: 0.6 });
 let temporal = null;
 let cube = null;
 const isCube = () => $('videoEffect').value === 'spacetime';
+const isSlit = () => $('videoEffect').value === 'slit-scan';
+let slitVolume = null;
+let slitAbort = null;
+let slitGeneration = 0;
+let slitRenderVersion = 0;
+let slitTimer = 0;
+let slitSampling = false;
+
+function slitOptions() {
+  return { direction: $('slitDirection').value, start: Number($('slitLineStart').value) / 100,
+    end: Number($('slitLineEnd').value) / 100, band: Number($('slitBand').value) };
+}
+
+function updateSlitMemory() {
+  const width = Number($('slitWidth').value), count = Number($('slitCount').value);
+  const height = media ? Math.max(2, Math.round(width * media.height / media.width)) : Math.round(width * 9 / 16);
+  $('slitMemory').textContent = `Preview: ${width} × ${height} × ${count} · about ${Math.round(width * height * count * 4 / 1048576)} MB`;
+  return { width, height, count };
+}
+
+function restoreSlitParameters() {
+  const view = temporal?.getParameters('slit-scan-view');
+  if (view) {
+    if (['vertical', 'horizontal'].includes(view.direction)) $('slitDirection').value = view.direction;
+    for (const [id, value] of [['slitLineStart', view.start * 100], ['slitLineEnd', view.end * 100], ['slitBand', view.band]]) if (Number.isFinite(value)) $(id).value = String(value);
+  }
+  const sampling = temporal?.getParameters('slit-scan-sampling');
+  if (sampling) {
+    $('slitCount').value = String(sampling.count);
+    $('slitWidth').value = String(sampling.width);
+  }
+  updateSlitLabels();
+}
+
+function updateSlitLabels() {
+  $('slitLineStartValue').value = `${$('slitLineStart').value}%`;
+  $('slitLineEndValue').value = `${$('slitLineEnd').value}%`;
+  $('slitBandValue').value = `${$('slitBand').value} px`;
+}
 
 function cubeOptions() {
   return { mode: $('cubeMode').value, axis: $('cubeAxis').value, position: Number($('cubePosition').value) / 100,
@@ -54,25 +94,33 @@ function restoreCubeParameters() {
   for (const id of ['cubePosition', 'cubeOpacity', 'cubeScale', 'cubeSpacing']) $(id + 'Value').value = `${$(id).value}%`;
 }
 
-function syncCubeControls() {
-  $('frameEffectControls').hidden = isCube();
+function syncEffectControls() {
+  const temporalEffect = isCube() || isSlit();
+  $('frameEffectControls').hidden = temporalEffect;
+  $('slitControls').hidden = !isSlit();
   $('cubeControls').hidden = !isCube();
   $('cubeViewport').hidden = !isCube();
+  $('slitCanvas').hidden = !isSlit();
   $('videoCanvas').parentElement.classList.toggle('cube-active', isCube());
-  $('exportVideo').disabled = exporting || isCube() || !media?.exportAvailable;
-  $('extractFrame').disabled = isCube() || !media;
-  $('playVideo').disabled = isCube() || !media;
-  $('videoTimeline').disabled = isCube() || !media;
+  $('videoCanvas').parentElement.classList.toggle('slit-active', isSlit());
+  $('exportVideo').disabled = exporting || temporalEffect || !media?.exportAvailable;
+  $('extractFrame').disabled = temporalEffect || !media;
+  $('playVideo').disabled = temporalEffect || !media;
+  $('videoTimeline').disabled = temporalEffect || !media;
   $('cubeGenerate').disabled = exporting || !media;
   $('cubeScreenshot').disabled = !cube?.volume;
+  $('slitGenerate').disabled = exporting || !media;
+  $('slitExport').disabled = !slitVolume;
+  if (temporalEffect && media) { media.pause(); stopFrameLoop(); $('playVideo').textContent = 'Play'; }
   if (isCube() && media) {
-    media.pause(); stopFrameLoop(); $('playVideo').textContent = 'Play';
     if (!cube) {
       try { cube = new SpacetimeViewer($('cubeViewport')); cube.onSlicePosition = value => { $('cubePosition').value = String(Math.round(value * 100)); $('cubePositionValue').value = `${Math.round(value * 100)}%`; }; cube.setOptions(cubeOptions()); }
       catch (error) { status(error.message, true); return; }
     }
     cube.resize();
     status(cube.volume ? 'Drag to rotate, Shift drag to pan, or scroll to zoom.' : 'Choose an interval and generate a spacetime volume.');
+  } else if (isSlit() && media) {
+    status(slitVolume ? 'Adjust the line position, width, or direction to explore the scan.' : 'Choose an interval and generate a slit scan.');
   } else if (media) scheduleExtract(video.currentTime);
 }
 
@@ -136,6 +184,18 @@ function closeMedia() {
   seekVersion++;
   clearTimeout(seekTimer);
   stopFrameLoop();
+  slitGeneration++; slitRenderVersion++;
+  clearTimeout(slitTimer);
+  slitAbort?.abort(); slitAbort = null;
+  slitSampling = false;
+  slitVolume = null;
+  $('slitCanvas').width = 0;
+  $('slitCanvas').height = 0;
+  $('slitCanvas').hidden = true;
+  $('cubeViewport').hidden = true;
+  $('slitGenerate').disabled = true;
+  $('slitCancel').disabled = true;
+  $('slitExport').disabled = true;
   temporal?.dispose(); temporal = null;
   cube?.dispose(); cube = null;
   $('cubeGenerate').disabled = true;
@@ -146,7 +206,7 @@ function closeMedia() {
   renderer?.dispose();
   renderer = null;
   $('videoEmpty').textContent = 'Open a video to preview its frames.';
-  $('videoCanvas').parentElement.classList.remove('loaded');
+  $('videoCanvas').parentElement.classList.remove('loaded', 'cube-active', 'slit-active');
   $('playVideo').textContent = 'Play';
   controls(false);
 }
@@ -164,6 +224,10 @@ async function openFile(file) {
     if (openedSession !== session) return;
     renderer = new WebGL2VideoRenderer(canvas, details.width, details.height);
     temporal = new TemporalEffectsEngine(next);
+    $('slitStartTime').value = '0';
+    $('slitEndTime').value = String(details.duration);
+    restoreSlitParameters();
+    updateSlitMemory();
     $('cubeStart').value = '0';
     $('cubeEnd').value = String(details.duration);
     restoreCubeParameters();
@@ -174,8 +238,8 @@ async function openFile(file) {
     $('videoDetails').textContent = `${file.name} · ${details.width} × ${details.height} working size · ${formatTime(details.duration)} · ${details.hasAudio ? 'audio track' : 'no audio track'}`;
     controls(true, details.exportAvailable);
     await renderExtracted(0);
-    syncCubeControls();
-    status(details.exportAvailable ? 'Ready. Drag on the frame to position the effect, or scrub the timeline.' : `Preview ready. ${details.exportReason} Frame PNG export is available.`);
+    syncEffectControls();
+    if (!isCube() && !isSlit()) status(details.exportAvailable ? 'Ready. Drag on the frame to position the effect, or scrub the timeline.' : `Preview ready. ${details.exportReason} Frame PNG export is available.`);
   } catch (error) {
     closeMedia();
     $('videoEmpty').textContent = error.message;
@@ -207,16 +271,82 @@ $('videoTimeline').addEventListener('input', event => {
 
 function updateEffect() {
   const name = $('videoEffect').value;
-  if (name === 'spacetime') { syncCubeControls(); return; }
+  if (name !== 'slit-scan') {
+    slitGeneration++; clearTimeout(slitTimer); slitAbort?.abort(); slitAbort = null;
+    if (slitSampling) { temporal?.cancel(); slitSampling = false; $('slitCancel').disabled = true; }
+    if (slitVolume) { slitVolume = null; $('slitExport').disabled = true; $('slitCanvas').width = 0; $('slitCanvas').height = 0; if (!cube?.volume) temporal?.clear(); }
+  }
+  if (name === 'spacetime' || name === 'slit-scan') { syncEffectControls(); return; }
   const defaultDrag = name === 'smear' && !effect.deltaX && !effect.deltaY ? { deltaX: 0.08 } : {};
   effect = normalizeEffect({ ...effect, ...defaultDrag, name, radius: Number($('videoSize').value) / 100, strength: Number($('videoStrength').value) / 100 });
   $('videoSizeValue').value = `${$('videoSize').value}%`;
   $('videoStrengthValue').value = `${$('videoStrength').value}%`;
   if (video.paused) scheduleExtract(video.currentTime);
   else renderLive();
-  syncCubeControls();
+  syncEffectControls();
 }
 for (const id of ['videoEffect', 'videoSize', 'videoStrength']) $(id).addEventListener(id === 'videoEffect' ? 'change' : 'input', updateEffect);
+for (const id of ['slitStartTime', 'slitEndTime', 'slitCount', 'slitWidth']) $(id).addEventListener('input', updateSlitMemory);
+for (const id of ['slitDirection', 'slitLineStart', 'slitLineEnd', 'slitBand']) $(id).addEventListener('input', () => {
+  updateSlitLabels();
+  temporal?.saveParameters('slit-scan-view', slitOptions());
+  if (!slitVolume || !isSlit()) return;
+  clearTimeout(slitTimer);
+  slitTimer = setTimeout(() => renderSlitScan(slitVolume).catch(error => { if (error.name !== 'AbortError') status(error.message, true); }), 40);
+});
+
+async function renderSlitScan(volume) {
+  slitAbort?.abort();
+  const controller = new AbortController();
+  slitAbort = controller;
+  const version = ++slitRenderVersion;
+  $('slitExport').disabled = true;
+  const result = await composeSlitScanAsync(volume, slitOptions(), controller.signal);
+  if (controller.signal.aborted || version !== slitRenderVersion || !isSlit()) return;
+  const target = $('slitCanvas');
+  target.width = result.width;
+  target.height = result.height;
+  target.getContext('2d').putImageData(new ImageData(result.pixels, result.width, result.height), 0, 0);
+  $('slitExport').disabled = false;
+  status(`Slit Scan ready: ${volume.depth} frames. Adjust the line to explore motion through time.`);
+  if (slitAbort === controller) slitAbort = null;
+}
+
+$('slitGenerate').addEventListener('click', async () => {
+  if (!media || !temporal || !isSlit() || exporting) return;
+  const generationSession = session;
+  const run = ++slitGeneration;
+  const size = updateSlitMemory();
+  const options = { ...size, start: Number($('slitStartTime').value), end: Number($('slitEndTime').value) };
+  $('slitGenerate').disabled = true;
+  $('slitCancel').disabled = false;
+  $('slitExport').disabled = true;
+  slitAbort?.abort();
+  slitVolume = null;
+  $('slitCanvas').width = 0;
+  $('slitCanvas').height = 0;
+  cube?.clearVolume();
+  temporal.clear();
+  slitSampling = true;
+  status('Sampling local video for Slit Scan… 0%');
+  try {
+    const volume = await temporal.sample(options, progress => { if (run === slitGeneration) status(`Sampling local video for Slit Scan… ${Math.round(progress * 100)}%`); });
+    if (generationSession !== session || run !== slitGeneration || !isSlit()) return;
+    slitSampling = false;
+    slitVolume = volume;
+    temporal.saveParameters('slit-scan-sampling', options);
+    await renderSlitScan(volume);
+  } catch (error) { if (generationSession === session && run === slitGeneration) status(error.name === 'AbortError' ? 'Slit Scan canceled.' : error.message, error.name !== 'AbortError'); }
+  finally { if (generationSession === session && run === slitGeneration) { slitSampling = false; $('slitGenerate').disabled = false; $('slitCancel').disabled = true; } }
+});
+$('slitCancel').addEventListener('click', () => { slitGeneration++; slitRenderVersion++; slitAbort?.abort(); if (slitSampling) temporal?.cancel(); slitSampling = false; $('slitGenerate').disabled = !media; $('slitCancel').disabled = true; status('Slit Scan canceled.'); });
+$('slitExport').addEventListener('click', async () => {
+  if (!slitVolume || !isSlit() || $('slitExport').disabled) return;
+  const blob = await new Promise(resolve => $('slitCanvas').toBlob(resolve, 'image/png'));
+  if (!blob) { status('Could not save the Slit Scan PNG.', true); return; }
+  download(blob, 'photo-flow-slit-scan.png');
+  status('Saved Slit Scan PNG.');
+});
 for (const id of ['cubeStart', 'cubeEnd', 'cubeCount', 'cubeWidth']) $(id).addEventListener('input', updateCubeMemory);
 for (const id of ['cubeMode', 'cubeAxis', 'cubePosition', 'cubeOpacity', 'cubeScale', 'cubeSpacing', 'cubeFaces', 'cubeHighlight']) {
   $(id).addEventListener('input', () => {
@@ -239,6 +369,9 @@ $('cubeGenerate').addEventListener('click', async () => {
   $('cubeGenerate').disabled = true;
   $('cubeCancel').disabled = false;
   cube.clearVolume();
+  slitAbort?.abort();
+  slitVolume = null;
+  $('slitExport').disabled = true;
   temporal.clear();
   $('cubeScreenshot').disabled = true;
   status('Sampling video into a local 3D volume… 0%');
@@ -314,7 +447,7 @@ $('exportVideo').addEventListener('click', async () => {
     download(new Blob([buffer], { type: 'video/mp4' }), 'photo-flow-video.mp4');
     status(audioWarning || 'MP4 exported with original AAC audio when present.');
   } catch (error) { status(error.message, true); }
-  finally { exporting = false; syncCubeControls(); }
+  finally { exporting = false; syncEffectControls(); }
 });
 
 window.addEventListener('beforeunload', closeMedia);

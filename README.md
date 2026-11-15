@@ -23,3 +23,7 @@ See [Video Studio design](docs/video-studio.md) for the audit, effect compatibil
 ## Spacetime Cube
 
 In Video Studio, open a video and choose **Spacetime Cube** from the Effect menu. Set the start and end times, frame count, and preview width, then choose **Generate volume**. Drag the view to rotate, Shift drag or right drag to pan, and scroll to zoom. Switch between Stacked frames, Solid volume, and Cross-sections. Choose XY, XZ, or YZ to inspect a frame or a position through time, and move or animate the cutting plane. The camera presets, opacity, spacing, time-axis length, surface visibility, orbit animation, and PNG screenshot control are in the same panel. Sampling and rendering stay local to the device. The cube exports a screenshot; MP4 export applies to the regular video effects.
+
+## Slit Scan
+
+Open a video in Video Studio and choose **Slit Scan**. Select a time interval, frame count, and preview width, then choose **Generate scan**. A vertical scan line makes time run left to right; a horizontal line makes time run top to bottom. Set Line start and Line end to the same position for a fixed slit, or separate them to sweep the line across the image as time passes. Scan width averages nearby pixels. Adjusting direction, position, or width updates the sampled result without decoding the video again. **Save Slit Scan PNG** exports the still image locally.
