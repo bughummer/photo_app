@@ -17,18 +17,38 @@
       <aside class="video-panel">
         <div class="section-label">VIDEO EFFECT</div>
         <label for="videoEffect">Effect</label>
-        <select id="videoEffect"><option value="none">Original video</option></select>
-        <p>Choose an effect, then click or drag on the frame to place it. The same settings apply across the clip.</p>
-        <label class="slider-label" for="videoSize"><span>Area</span><output id="videoSizeValue">35%</output></label>
-        <input id="videoSize" type="range" min="5" max="100" value="35">
-        <label class="slider-label" for="videoStrength"><span>Strength</span><output id="videoStrengthValue">60%</output></label>
-        <input id="videoStrength" type="range" min="5" max="100" value="60">
+        <select id="videoEffect"><option value="none">Original video</option><option value="spacetime">Spacetime Cube</option></select>
+        <div id="frameEffectControls">
+          <p>Choose an effect, then click or drag on the frame to place it. The same settings apply across the clip.</p>
+          <label class="slider-label" for="videoSize"><span>Area</span><output id="videoSizeValue">35%</output></label>
+          <input id="videoSize" type="range" min="5" max="100" value="35">
+          <label class="slider-label" for="videoStrength"><span>Strength</span><output id="videoStrengthValue">60%</output></label>
+          <input id="videoStrength" type="range" min="5" max="100" value="60">
+        </div>
+        <div id="cubeControls" hidden>
+          <p>Sample local video frames into a 3D volume. Drag to rotate, Shift drag or right drag to pan, and scroll to zoom.</p>
+          <div class="cube-pair"><label>Start (s)<input id="cubeStart" type="number" min="0" step="0.01" value="0"></label><label>End (s)<input id="cubeEnd" type="number" min="0" step="0.01" value="1"></label></div>
+          <div class="cube-pair"><label>Frames<input id="cubeCount" type="number" min="2" max="240" step="1" value="120"></label><label>Width (px)<input id="cubeWidth" type="number" min="32" max="640" step="2" value="320"></label></div>
+          <p id="cubeMemory">Preview: 320 × 180 × 120 · about 26 MB</p>
+          <div class="cube-actions"><button id="cubeGenerate" class="button" disabled>Generate volume</button><button id="cubeCancel" class="button" disabled>Cancel</button></div>
+          <label for="cubeMode">Render mode</label><select id="cubeMode"><option value="stack">Stacked frames</option><option value="solid">Solid volume</option><option value="slices">Cross-sections</option></select>
+          <label>Camera view</label><div class="cube-actions"><button class="button" data-cube-preset="front">Front</button><button class="button" data-cube-preset="side">Side</button><button class="button" data-cube-preset="top">Top</button><button class="button" data-cube-preset="iso">Iso</button></div>
+          <label for="cubeAxis">Cutting plane</label><select id="cubeAxis"><option value="xy">XY · video frame</option><option value="xz">XZ · horizontal through time</option><option value="yz">YZ · vertical through time</option></select>
+          <label class="slider-label" for="cubePosition"><span>Slice position</span><output id="cubePositionValue">50%</output></label><input id="cubePosition" type="range" min="0" max="100" value="50">
+          <label class="slider-label" for="cubeOpacity"><span>Opacity</span><output id="cubeOpacityValue">65%</output></label><input id="cubeOpacity" type="range" min="1" max="100" value="65">
+          <label class="slider-label" for="cubeScale"><span>Time-axis length</span><output id="cubeScaleValue">100%</output></label><input id="cubeScale" type="range" min="25" max="300" value="100">
+          <label class="slider-label" for="cubeSpacing"><span>Layer spacing</span><output id="cubeSpacingValue">100%</output></label><input id="cubeSpacing" type="range" min="25" max="300" value="100">
+          <label class="cube-check"><input id="cubeFaces" type="checkbox" checked> Show external faces</label>
+          <label class="cube-check"><input id="cubeHighlight" type="checkbox" checked> Highlight cutting plane</label>
+          <div class="cube-actions"><button id="cubePlaySlice" class="button">Play slice</button><button id="cubeOrbit" class="button">Orbit camera</button><button id="cubeReset" class="button">Reset view</button></div>
+          <button id="cubeScreenshot" class="button" disabled>Save screenshot PNG</button>
+        </div>
         <div class="video-divider"></div>
         <div id="videoDetails" class="video-details">Open a local MP4 or WebM to begin.</div>
         <p class="video-note">Playback keeps the source audio. MP4 export copies AAC audio when supported. Stage 1 exports up to 60 seconds at a working resolution of 1280 pixels.</p>
       </aside>
       <section class="video-workspace" aria-label="Video preview">
-        <div class="video-preview"><canvas id="videoCanvas" aria-label="Effect preview"></canvas><div id="videoEmpty">Open a video to preview its frames.</div></div>
+        <div class="video-preview"><canvas id="videoCanvas" aria-label="Effect preview"></canvas><div id="cubeViewport" aria-label="Interactive spacetime volume" hidden></div><div id="videoEmpty">Open a video to preview its frames.</div></div>
         <div class="video-controls">
           <button id="playVideo" class="button" disabled>Play</button>
           <span id="videoTime">0:00 / 0:00</span>

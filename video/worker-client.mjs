@@ -17,10 +17,17 @@ export class VideoWorkerClient {
     };
   }
 
-  request(type, payload = {}, onProgress) {
+  request(type, payload = {}, onProgress, signal) {
     const id = this.nextId++;
     return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve, reject, onProgress });
+      if (signal?.aborted) { reject(new DOMException('Canceled', 'AbortError')); return; }
+      const abort = () => {
+        this.pending.delete(id);
+        this.worker.postMessage({ type: 'cancelRange', targetId: id });
+        reject(new DOMException('Canceled', 'AbortError'));
+      };
+      this.pending.set(id, { resolve: value => { signal?.removeEventListener('abort', abort); resolve(value); }, reject: error => { signal?.removeEventListener('abort', abort); reject(error); }, onProgress });
+      signal?.addEventListener('abort', abort, { once: true });
       this.worker.postMessage({ id, type, ...payload });
     });
   }

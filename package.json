@@ -15,6 +15,7 @@
     "playwright": "1.65.1"
   },
   "dependencies": {
-    "mediabunny": "1.66.0"
+    "mediabunny": "1.66.0",
+    "three": "0.181.2"
   }
 }

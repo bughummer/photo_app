@@ -6,6 +6,18 @@ The existing Image Studio is plain HTML, CSS, and JavaScript with no frontend fr
 
 The existing shader is now in `effects.js`, shared by both studios. Image Studio still owns its interactive texture and Canvas 2D layers. Video Studio renders a fresh source frame with a stable effect specification, without altering Image Studio state.
 
+## Spacetime Cube extension
+
+`video/temporal-mapping.mjs` defines a deterministic, ordered timestamp schedule and voxel coordinates. X increases rightward, Y increases downward in image coordinates, and Z increases with time. CPU frames are packed with flipped Y rows for WebGL's bottom-up texture coordinates. The same packed data drives stacked frame planes, orthogonal XY/XZ/YZ cuts, and a 3D texture ray marcher. Synthetic coordinate tests and direct decoded-frame comparisons verify this mapping before the ray marcher is used.
+
+`video/video-worker.mjs` now samples an interval with Mediabunny's `VideoSampleSink.samplesAtTimestamps`, downscales in an `OffscreenCanvas`, and transfers one packed volume back to the UI. Samples are closed after drawing. `video/temporal-engine.mjs` owns cancellation, one bounded sampled volume, a parameter store, and `TemporalTextureManager` for Three.js `Data3DTexture` creation and disposal. This is the shared foundation for Slit Scan, Temporal Echoes, Fractured Time, and Time Bubble: each can request ordered frames or an interval without building another decoder. A future native adapter can implement the same requests behind the worker client.
+
+`video/spacetime-viewer.mjs` owns a Three.js scene within the existing Video Studio preview. Stack mode draws separated textured frame planes. Cross-section mode draws a single movable plane; XY is a frame at time, XZ maps horizontal position against time at fixed Y, and YZ maps vertical position against time at fixed X. Solid mode ray marches through the sampled 3D texture, with an optional first surface contribution. The highlighted cutting plane uses the same texture. Mouse drag rotates, Shift or right drag pans, and wheel zooms; front, side, top, and isometric presets interpolate camera angles. Slice motion changes the existing plane's uniform and position without recreating the stack on every animation frame.
+
+The preview defaults to 320 pixels wide, 180 pixels high for 16:9 video, and 120 temporal samples. A 96 MiB volume budget and the GPU's `MAX_3D_TEXTURE_SIZE` limit are checked before upload. Users can reduce width or temporal frame count for slower devices. The solid render buffer is capped at 480 pixels on its longest side and the other modes at 960 pixels; the screenshot uses this preview resolution. The browser worker handles decoding and cancellation, keeping the main thread free for interaction. A new import or closing the page disposes the decoded cache, sampled volume, 3D texture, meshes, renderer, and WebGL context. Cube export is a PNG screenshot; existing frame PNG and MP4 export remain available for regular video effects.
+
+Tests include timestamp ordering, X/Y/Z mapping, cancellation and restart, GPU texture disposal, all rendering modes, a direct comparison between an XY slice and a decoded frame, and a small local fixture with a stationary background and two moving pedestrian silhouettes. The fixture verifies stable background structures and distinct XZ trajectories. `tests/spacetime-browser.test.mjs` also samples the default 320 × 180 × 120 preview while measuring main-thread timer activity.
+
 | Effects | Stage 1 video use | Reason |
 | --- | --- | --- |
 | Fluid smear, Swirl, Bulge, Disperse, Paint pull, Water lens, Smoke, Digital glitch, Mirror distortion | Yes | The shader can transform one decoded frame at a time. Fluid smear uses a drag direction. |

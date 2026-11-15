@@ -1,6 +1,7 @@
 import { Input, ALL_FORMATS, BlobSource, VideoSampleSink, Output, Mp4OutputFormat, BufferTarget, CanvasSource, EncodedPacketSink, EncodedAudioPacketSource, canEncodeVideo } from '../node_modules/mediabunny/dist/bundles/mediabunny.mjs';
 import { frameTimes, clampTime } from './timeline.mjs';
 import { WebGL2VideoRenderer } from './webgl2-renderer.mjs';
+import { samplingSchedule, setFrame } from './temporal-mapping.mjs';
 
 let input = null;
 let track = null;
@@ -9,6 +10,7 @@ let file = null;
 let duration = 0;
 let previewCanvas = null;
 let decodeQueue = Promise.resolve();
+const canceledRanges = new Set();
 
 function disposeInput() {
   input?.dispose();
@@ -68,6 +70,34 @@ async function extract(time) {
   } finally {
     sample.close();
   }
+}
+
+async function sampleRange(options, requestId) {
+  if (!track) throw new Error('Open a video before sampling time.');
+  const { start, end, count, width, height } = options;
+  const times = samplingSchedule(start, end, count, duration);
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width < 2 || height < 2 || width * height * count * 4 > 96 * 1024 * 1024) throw new Error('Temporal preview exceeds the 96 MB memory budget. Reduce resolution or frame count.');
+  const volume = new Uint8Array(width * height * count * 4);
+  const canvas = new OffscreenCanvas(width, height);
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  const samples = new VideoSampleSink(track);
+  let index = 0;
+  try {
+    for await (const sample of samples.samplesAtTimestamps(times)) {
+      if (canceledRanges.has(requestId)) throw new Error('Temporal sampling canceled.');
+      if (!sample) throw new Error(`No video frame was decoded at ${times[index].toFixed(3)} seconds.`);
+      try {
+        context.clearRect(0, 0, width, height);
+        sample.draw(context, 0, 0, width, height);
+        setFrame(volume, context.getImageData(0, 0, width, height).data, index, width, height, count);
+      } finally { sample.close(); }
+      index++;
+      if (index % 4 === 0 || index === count) self.postMessage({ type: 'progress', id: requestId, value: index / count });
+    }
+    if (canceledRanges.has(requestId)) throw new Error('Temporal sampling canceled.');
+    if (index !== count) throw new Error('The decoder ended before all temporal frames were sampled.');
+    return { buffer: volume.buffer, width, height, depth: count, timestamps: times };
+  } finally { canceledRanges.delete(requestId); }
 }
 
 async function exportVideo(effect, requestId) {
@@ -143,6 +173,7 @@ async function exportVideo(effect, requestId) {
 
 self.onmessage = async ({ data }) => {
   const { id, type } = data;
+  if (type === 'cancelRange') { canceledRanges.add(data.targetId); return; }
   try {
     if (type === 'open') {
       decodeQueue = Promise.resolve();
@@ -154,6 +185,11 @@ self.onmessage = async ({ data }) => {
       self.postMessage({ id, value: { bitmap }, }, [bitmap]);
     } else if (type === 'export') {
       const result = await exportVideo(data.effect, id);
+      self.postMessage({ id, value: result }, [result.buffer]);
+    } else if (type === 'sampleRange') {
+      const task = decodeQueue.then(() => sampleRange(data.options, id));
+      decodeQueue = task.catch(() => {});
+      const result = await task;
       self.postMessage({ id, value: result }, [result.buffer]);
     } else if (type === 'dispose') {
       disposeInput();
