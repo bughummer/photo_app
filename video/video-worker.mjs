@@ -4,6 +4,10 @@ import { WebGL2VideoRenderer } from './webgl2-renderer.mjs';
 import { samplingSchedule, setFrame } from './temporal-mapping.mjs';
 import { EchoWebGLRenderer } from './echo-renderer.mjs';
 import { echoFrameTimes, EchoPlaybackHistory, normalizeEchoParams } from './temporal-echoes.mjs';
+import { FracturedRenderer } from '../fractured/renderer.mjs';
+import { generateFractureGeometry } from '../fractured/geometry.mjs';
+import { normalizeFracturedParams } from '../fractured/parameters.mjs';
+import { AnchorTracker } from '../fractured/face.mjs';
 
 let input = null;
 let track = null;
@@ -137,7 +141,9 @@ async function exportVideo(effect, requestId) {
   if (!file) throw new Error('Open a video before exporting.');
   if (duration > 60) throw new Error('Stage 1 export is limited to 60 seconds. Trim the clip first or choose a shorter video.');
   const echo = effect?.name === 'temporal-echoes';
-  const scale = echo ? Math.min(1, 720 / Math.max(previewCanvas.width, previewCanvas.height)) : 1;
+  const fractured = effect?.name === 'fractured-identity';
+  const fractureParams = fractured ? normalizeFracturedParams(effect) : null;
+  const scale = echo || fractured ? Math.min(1, 720 / Math.max(previewCanvas.width, previewCanvas.height)) : 1;
   const width = Math.max(2, Math.floor(previewCanvas.width * scale / 2) * 2);
   const height = Math.max(2, Math.floor(previewCanvas.height * scale / 2) * 2);
   if (typeof VideoEncoder === 'undefined' || !await canEncodeVideo('avc', { width, height, frameRate: 24 })) throw new Error('This browser cannot encode H.264 MP4 at the working resolution.');
@@ -145,6 +151,7 @@ async function exportVideo(effect, requestId) {
   let output = null;
   let renderer = null;
   let history = null;
+  let tracker = null;
   try {
     const videoTrack = await exportInput.getPrimaryVideoTrack();
     const audioTrack = await exportInput.getPrimaryAudioTrack();
@@ -152,8 +159,12 @@ async function exportVideo(effect, requestId) {
     const target = new BufferTarget();
     output = new Output({ format, target });
     const canvas = new OffscreenCanvas(width, height);
-    renderer = echo ? new EchoWebGLRenderer(canvas, width, height) : new WebGL2VideoRenderer(canvas, width, height);
+    renderer = echo ? new EchoWebGLRenderer(canvas, width, height) : fractured ? new FracturedRenderer(canvas, width, height) : new WebGL2VideoRenderer(canvas, width, height);
     if (echo) history = new EchoPlaybackHistory(width, height);
+    if (fractured) {
+      renderer.setGeometry(generateFractureGeometry(fractureParams));
+      if (fractureParams.faceTracking) tracker = new AnchorTracker(fractureParams.anchors);
+    }
     const source = new CanvasSource(canvas, { codec: 'avc', bitrate: 4_000_000, keyFrameInterval: 2 });
     output.addVideoTrack(source);
     let audioSource = null;
@@ -188,6 +199,9 @@ async function exportVideo(effect, requestId) {
         if (echo) {
           renderer.render(frameCanvas, history.sourcesAt(timestamps[index], effect), effect);
           history.capture(frameCanvas, timestamps[index], effect);
+        } else if (fractured) {
+          const anchors = tracker ? tracker.update(frameCanvas) : fractureParams.anchors;
+          renderer.render(frameCanvas, timestamps[index], fractureParams, anchors, true);
         } else renderer.render(frameCanvas, effect);
         await source.add(timestamps[index], Math.min(1 / 24, duration - timestamps[index]));
       } finally {
@@ -208,6 +222,7 @@ async function exportVideo(effect, requestId) {
     throw error;
   } finally {
     history?.dispose();
+    tracker?.dispose();
     renderer?.dispose();
     exportInput.dispose();
   }

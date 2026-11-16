@@ -115,6 +115,10 @@
           ctx.fillRect(x + depth, y - depth, 1 + depth * 0.45, 1 + depth * 0.45);
         }
       }
+    } else if (mode === 'fractured') {
+      path(ctx, '#111820', 2.2, [[5, 4], [17, 14], [29, 19], [39, 33], [58, 45]]);
+      path(ctx, '#0d1116', 1.5, [[50, 3], [37, 18], [31, 26], [18, 39], [12, 52]]);
+      path(ctx, '#bde4ed', .8, [[7, 5], [19, 15], [30, 20], [40, 34], [58, 46]]);
     } else if (mode === 'particle') {
       for (let i = 0; i < 36; i++) {
         const a = i * 2.399, r = 4 + (i % 7) * 3;

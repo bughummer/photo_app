@@ -7,7 +7,7 @@
   "scripts": {
     "start": "electron .",
     "web": "node server.cjs",
-    "check": "node --check electron.cjs && node --check server.cjs && node --check particles.js && node --check brush-examples.js && node --check effects.js && node --check app.js && node --check video/*.mjs",
+    "check": "node --check electron.cjs && node --check server.cjs && node --check particles.js && node --check brush-examples.js && node --check effects.js && node --check app.js && node --check video/*.mjs && node --check fractured/*.mjs",
     "test": "node --test tests/*.test.mjs"
   },
   "devDependencies": {

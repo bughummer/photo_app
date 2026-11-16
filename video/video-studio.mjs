@@ -7,6 +7,10 @@ import { SpacetimeViewer } from './spacetime-viewer.mjs';
 import { composeSlitScanAsync } from './slit-scan.mjs';
 import { EchoWebGLRenderer } from './echo-renderer.mjs';
 import { EchoPlaybackHistory, normalizeEchoParams } from './temporal-echoes.mjs';
+import { mountFracturedControls } from '../fractured/controls.mjs';
+import { FracturedPreview } from '../fractured/preview.mjs';
+import { AnchorHandles } from '../fractured/anchor-handles.mjs';
+import { AnchorTracker, detectFaceAnchors } from '../fractured/face.mjs';
 
 const $ = id => document.getElementById(id);
 const video = $('sourceVideo');
@@ -28,6 +32,46 @@ let cube = null;
 const isCube = () => $('videoEffect').value === 'spacetime';
 const isSlit = () => $('videoEffect').value === 'slit-scan';
 const isEcho = () => $('videoEffect').value === 'temporal-echoes';
+const isFractured = () => $('videoEffect').value === 'fractured-identity';
+let fracturePreview = null;
+let fractureHandles = null;
+let fractureTracker = null;
+const fractureControls = mountFracturedControls($('fracturedVideoControls'), params => {
+  fracturePreview?.setParams(params);
+  fractureTracker?.reset(params.anchors);
+  fractureHandles?.update(params.anchors,isFractured() && params.showAnchors);
+  if (media && isFractured() && video.paused) scheduleExtract(video.currentTime);
+});
+if (typeof FaceDetector === 'undefined') { fractureControls.detectButton.disabled = true; fractureControls.detectButton.title = 'Automatic face detection is unavailable. Drag the face anchors manually.'; }
+else fractureControls.detectButton.addEventListener('click',async () => {
+  if (!media) return;
+  try {
+    const anchors = await detectFaceAnchors(video);
+    if (!anchors) { status('No face detected. Drag the anchors to place them manually.'); return; }
+    fractureControls.set({ ...fractureControls.get(),anchors,showAnchors:true });
+    status('Face anchors placed. Drag them to refine the distortion.');
+  } catch (error) { status(error.message,true); }
+});
+function ensureFracture() {
+  if (fracturePreview || !media) return;
+  const scale = Math.min(1,720/Math.max(media.width,media.height));
+  const width = Math.max(2,Math.round(media.width*scale)), height = Math.max(2,Math.round(media.height*scale));
+  fracturePreview = new FracturedPreview($('fracturedVideoCanvas'),width,height,error => status(error.message,true));
+  fracturePreview.setParams(fractureControls.get());
+  fractureTracker = new AnchorTracker(fractureControls.get().anchors);
+  fractureHandles = new AnchorHandles($('videoCanvas').parentElement,$('fracturedVideoCanvas'),(index,point) => {
+    const params = fractureControls.get(), anchors = params.anchors.map(anchor => ({ ...anchor }));
+    anchors[index] = point;
+    fractureControls.set({ ...params,anchors });
+  });
+  fractureHandles.update(fractureControls.get().anchors,fractureControls.get().showAnchors);
+}
+function disposeFracture() {
+  fractureHandles?.dispose(); fractureHandles = null;
+  fractureTracker?.dispose(); fractureTracker = null;
+  fracturePreview?.dispose(); fracturePreview = null;
+  $('fracturedVideoCanvas').width = $('fracturedVideoCanvas').height = 0;
+}
 let echoRenderer = null;
 let echoHistory = null;
 let echoSeekAbort = null;
@@ -142,16 +186,19 @@ function restoreCubeParameters() {
 
 function syncEffectControls(announce = true) {
   const temporalEffect = isCube() || isSlit();
-  $('frameEffectControls').hidden = temporalEffect || isEcho();
+  $('frameEffectControls').hidden = temporalEffect || isEcho() || isFractured();
+  $('fracturedVideoControls').hidden = !isFractured();
   $('echoControls').hidden = !isEcho();
   $('slitControls').hidden = !isSlit();
   $('cubeControls').hidden = !isCube();
   $('cubeViewport').hidden = !isCube();
   $('slitCanvas').hidden = !isSlit();
   $('echoCanvas').hidden = !isEcho();
+  $('fracturedVideoCanvas').hidden = !isFractured();
   $('videoCanvas').parentElement.classList.toggle('cube-active', isCube());
   $('videoCanvas').parentElement.classList.toggle('slit-active', isSlit());
   $('videoCanvas').parentElement.classList.toggle('echo-active', isEcho());
+  $('videoCanvas').parentElement.classList.toggle('fractured-active', isFractured());
   $('exportVideo').disabled = exporting || temporalEffect || !media?.exportAvailable;
   $('extractFrame').disabled = temporalEffect || !media;
   $('playVideo').disabled = temporalEffect || !media;
@@ -173,6 +220,9 @@ function syncEffectControls(announce = true) {
   } else if (isEcho() && media) {
     try { ensureEcho(); if (announce) status('Temporal Echoes ready. Play or scrub to explore the trails.'); }
     catch (error) { status(error.message, true); }
+  } else if (isFractured() && media) {
+    try { ensureFracture(); fractureHandles?.update(fractureControls.get().anchors,fractureControls.get().showAnchors); if (announce) status('Fractured Identity ready. Play or scrub the video.'); }
+    catch (error) { status(error.message,true); }
   } else if (media) scheduleExtract(video.currentTime);
 }
 
@@ -199,6 +249,15 @@ function renderLive() {
     const params = echoOptions(), time = video.currentTime;
     echoRenderer.render(video, echoHistory.sourcesAt(time, params), params);
     echoHistory.capture(video, time, params);
+  } else if (isFractured()) {
+    if (!fracturePreview) return;
+    const params = fractureControls.get(), time = video.currentTime;
+    fracturePreview.anchors = params.faceTracking ? fractureTracker.update(video) : params.anchors;
+    fracturePreview.source = video;
+    fracturePreview.dynamic = true;
+    fracturePreview.time = time;
+    fracturePreview.render();
+    fractureHandles?.update(fracturePreview.anchors,params.showAnchors);
   } else {
     if (!renderer) return;
     renderer.render(video, effect);
@@ -228,6 +287,21 @@ async function renderExtracted(time) {
   if (!media || !renderer) return;
   const version = ++seekVersion;
   const current = media;
+  if (isFractured()) {
+    ensureFracture();
+    const frame = await current.frameAt(time);
+    if (version !== seekVersion || current !== media || !isFractured()) return;
+    fracturePreview.source = frame;
+    fracturePreview.dynamic = true;
+    fracturePreview.time = time;
+    fracturePreview.anchors = fractureControls.get().anchors;
+    fractureTracker?.reset(fracturePreview.anchors);
+    fracturePreview.render();
+    fractureHandles?.update(fracturePreview.anchors,fractureControls.get().showAnchors);
+    updateTime(time);
+    status(`Fractured Identity frame at ${time.toFixed(2)} s.`);
+    return;
+  }
   if (isEcho()) {
     ensureEcho();
     echoSeekAbort?.abort();
@@ -267,6 +341,8 @@ function closeMedia() {
   seekVersion++;
   clearTimeout(seekTimer);
   stopFrameLoop();
+  disposeFracture();
+  $('fracturedVideoCanvas').hidden = true;
   disposeEcho();
   $('echoCanvas').hidden = true;
   slitGeneration++; slitRenderVersion++;
@@ -291,7 +367,7 @@ function closeMedia() {
   renderer?.dispose();
   renderer = null;
   $('videoEmpty').textContent = 'Open a video to preview its frames.';
-  $('videoCanvas').parentElement.classList.remove('loaded', 'cube-active', 'slit-active', 'echo-active');
+  $('videoCanvas').parentElement.classList.remove('loaded', 'cube-active', 'slit-active', 'echo-active', 'fractured-active');
   $('playVideo').textContent = 'Play';
   controls(false);
 }
@@ -325,7 +401,7 @@ async function openFile(file) {
     controls(true, details.exportAvailable);
     syncEffectControls();
     await renderExtracted(0);
-    if (!isCube() && !isSlit() && !isEcho()) status(details.exportAvailable ? 'Ready. Drag on the frame to position the effect, or scrub the timeline.' : `Preview ready. ${details.exportReason} Frame PNG export is available.`);
+    if (!isCube() && !isSlit() && !isEcho() && !isFractured()) status(details.exportAvailable ? 'Ready. Drag on the frame to position the effect, or scrub the timeline.' : `Preview ready. ${details.exportReason} Frame PNG export is available.`);
   } catch (error) {
     closeMedia();
     $('videoEmpty').textContent = error.message;
@@ -358,6 +434,7 @@ $('videoTimeline').addEventListener('input', event => {
 function updateEffect() {
   const name = $('videoEffect').value;
   if (name !== 'temporal-echoes' && echoRenderer) disposeEcho();
+  if (name !== 'fractured-identity' && fracturePreview) disposeFracture();
   if (name !== 'slit-scan') {
     slitGeneration++; clearTimeout(slitTimer); slitAbort?.abort(); slitAbort = null;
     if (slitSampling) { temporal?.cancel(); slitSampling = false; $('slitCancel').disabled = true; }
@@ -365,6 +442,7 @@ function updateEffect() {
   }
   if (name === 'spacetime' || name === 'slit-scan') { syncEffectControls(); return; }
   if (name === 'temporal-echoes') { syncEffectControls(); if (media) { if (video.paused) scheduleExtract(video.currentTime); else renderLive(); } return; }
+  if (name === 'fractured-identity') { syncEffectControls(); if (media) { if (video.paused) scheduleExtract(video.currentTime); else renderLive(); } return; }
   const defaultDrag = name === 'smear' && !effect.deltaX && !effect.deltaY ? { deltaX: 0.08 } : {};
   effect = normalizeEffect({ ...effect, ...defaultDrag, name, radius: Number($('videoSize').value) / 100, strength: Number($('videoStrength').value) / 100 });
   $('videoSizeValue').value = `${$('videoSize').value}%`;
@@ -520,7 +598,7 @@ $('extractFrame').addEventListener('click', async () => {
   if (!media) return;
   try {
     await renderExtracted(video.currentTime);
-    const target = isEcho() ? $('echoCanvas') : canvas;
+    const target = isEcho() ? $('echoCanvas') : isFractured() ? $('fracturedVideoCanvas') : canvas;
     const blob = await new Promise(resolve => target.toBlob(resolve, 'image/png'));
     if (!blob) throw new Error('Could not make a PNG from this frame.');
     download(blob, 'photo-flow-frame.png');
@@ -537,7 +615,7 @@ $('exportVideo').addEventListener('click', async () => {
   $('exportVideo').disabled = true;
   status('Exporting MP4 locally… 0%');
   try {
-    const exportEffect = isEcho() ? { name: 'temporal-echoes', ...echoOptions() } : effect;
+    const exportEffect = isEcho() ? { name: 'temporal-echoes', ...echoOptions() } : isFractured() ? { name:'fractured-identity',...fractureControls.get() } : effect;
     const { buffer, audioWarning } = await media.export(exportEffect, progress => status(`Exporting MP4 locally… ${Math.round(progress * 100)}%`));
     download(new Blob([buffer], { type: 'video/mp4' }), 'photo-flow-video.mp4');
     status(audioWarning || 'MP4 exported with original AAC audio when present.');

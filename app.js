@@ -169,6 +169,7 @@
       fitCanvas();
       draw();
       setButtons();
+      window.dispatchEvent(new CustomEvent('photo-flow:image-loaded', { detail: { source: imageCanvas } }));
     } catch (error) { alert(`Could not open this image: ${error.message}`); }
   }
   function applyBrushMask(brushCanvas, image, mode, label) {
@@ -456,6 +457,7 @@
   });
   $('export').addEventListener('click', () => {
     if (!state.ready) return;
+    if (state.brush === 'fractured' && window.PhotoFlowFracturedImage) { window.PhotoFlowFracturedImage.exportStill(); return; }
     stopMotion();
     particles.stop();
     draw();

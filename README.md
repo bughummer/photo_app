@@ -31,3 +31,9 @@ Open a video in Video Studio and choose **Slit Scan**. Select a time interval, f
 ## Temporal Echoes
 
 Choose **Temporal Echoes** in Video Studio to make moving parts of a clip leave fading copies of their earlier positions. Adjust the number of echoes, time between them, trail strength, and motion threshold. Play or scrub the video to preview the effect. **Save frame PNG** saves the current echoed frame, and **Export MP4** renders the echoed clip while copying compatible original AAC audio. Processing stays local. Echo MP4 export is capped at a 720-pixel working size to keep its frame history bounded.
+
+## Fractured Identity
+
+Choose **Fractured Identity** in Image Studio or Video Studio to animate a photo or clip beneath procedural fractured glass. Its seeded fragment map drives optical displacement, local facial warping, ghost layers, color separation, and reflective crack edges. Select one of five presets or edit the fracture, face, ghost, animation, and styling controls. Drag face anchors over a portrait to position the local deformation; automatic detection is offered when the browser exposes FaceDetector. With other images, the anchors can mark any region you want to distort. The same controls and seeded geometry are used for video preview and export.
+
+Image Studio saves the current frame as PNG and its short loop as MP4 or WebM, depending on the browser encoder. Video Studio saves a frame PNG and exports MP4 with compatible original AAC audio. Processing stays local; video export uses a 720-pixel working size and the existing 60-second export limit. One photo supplies geometric and optical variations of that photo; it does not generate another identity.

@@ -3,3 +3,4 @@
 #slitControls>label:not(.slider-label){display:block;margin:16px 0 7px;font-size:12px;font-weight:600}#slitControls .slider-label{margin-top:18px}#slitControls>input[type=range]{width:100%}#slitExport{margin-top:16px}.video-preview.slit-active #videoCanvas,.video-preview.slit-active #videoEmpty{display:none}.video-preview.slit-active #slitCanvas{display:block;cursor:default}
 #slitCanvas[hidden]{display:none!important}
 #echoControls .slider-label{margin-top:22px}#echoControls>input[type=range]{width:100%}.video-preview.echo-active #videoCanvas{display:none}.video-preview.echo-active #echoCanvas{display:block;cursor:default}#echoCanvas[hidden]{display:none!important}
+.video-preview.fractured-active #videoCanvas{display:none}.video-preview.fractured-active #fracturedVideoCanvas{display:block;cursor:default}#fracturedVideoCanvas[hidden]{display:none!important}
