@@ -37,6 +37,22 @@ test('Eroded Identity animates image, scrubs video, and exports with audio', { t
     assert.equal(deterministic.first,deterministic.repeat,'fixed seed and time render deterministically');
     assert.equal(deterministic.first,deterministic.last,'first and last animation frames match');
     assert.notEqual(deterministic.first,deterministic.different,'seed changes erosion pattern');
+    const colorModes=await page.evaluate(async()=>{
+      const { ErodedRenderer }=await import('./eroded/renderer.mjs');
+      const { DEFAULT_PARAMS }=await import('./eroded/parameters.mjs');
+      const source=document.querySelector('#canvas'),canvas=new OffscreenCanvas(source.width,source.height),renderer=new ErodedRenderer(canvas,canvas.width,canvas.height);
+      const chroma=monochrome=>{
+        renderer.render(source,.8,{...DEFAULT_PARAMS,monochrome});
+        const pixels=new Uint8Array(canvas.width*canvas.height*4);
+        renderer.gl.readPixels(0,0,canvas.width,canvas.height,renderer.gl.RGBA,renderer.gl.UNSIGNED_BYTE,pixels);
+        let total=0;
+        for(let i=0;i<pixels.length;i+=16)total+=Math.abs(pixels[i]-pixels[i+1])+Math.abs(pixels[i+1]-pixels[i+2]);
+        return total;
+      };
+      const color=chroma(false),gray=chroma(true);renderer.dispose();return{color,gray};
+    });
+    assert.ok(colorModes.color>1000,'original color survives the effect');
+    assert.equal(colorModes.gray,0,'monochrome is optional');
 
     await page.locator('#erodedImageControls select[aria-label="Eroded Identity preset"]').selectOption('Ink Collapse');
     await page.waitForTimeout(80);

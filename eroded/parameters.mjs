@@ -2,7 +2,7 @@ const defaults = {
   decayIntensity:.72, coverage:.52, softness:.48, style:'ink', reconstruction:.85, seed:17,
   smearAmount:.5, smearDirection:.12, smearTurbulence:.55, edgeDrag:.5, melt:.48,
   grain:.32, noiseScale:.5, staticIntensity:.18, threshold:.45, roughness:.55,
-  contrast:.68, blacks:.58, washout:.22, blur:.28, bloom:.22, texture:.42,
+  contrast:.28, blacks:.35, washout:.12, blur:.28, bloom:.22, texture:.42, monochrome:false,
   faceAware:true, eyeErosion:.7, mouthErosion:.55, cheekCollapse:.58, centerPreservation:.55,
   duration:2.4, speed:1, loop:true, oscillation:.55, recoveryTiming:.76,
   anchors:[{x:.36,y:.4},{x:.64,y:.4},{x:.5,y:.55},{x:.5,y:.7},{x:.5,y:.82}]
@@ -24,6 +24,7 @@ export function normalizeParams(raw={}){
   p.smearDirection=clamp(p.smearDirection,-1,1,defaults.smearDirection);
   p.style=['dust','ink','signal','ash'].includes(p.style)?p.style:'ink';
   p.faceAware=!!p.faceAware; p.loop=!!p.loop;
+  p.monochrome=!!p.monochrome;
   p.anchors=defaults.anchors.map((a,i)=>({x:clamp(raw.anchors?.[i]?.x,0,1,a.x),y:clamp(raw.anchors?.[i]?.y,0,1,a.y)}));
   return p;
 }
