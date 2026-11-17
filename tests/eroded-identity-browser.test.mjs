@@ -32,10 +32,11 @@ test('Eroded Identity animates image, scrubs video, and exports with audio', { t
       const { DEFAULT_PARAMS }=await import('./eroded/parameters.mjs');
       const source=document.querySelector('#canvas'),canvas=new OffscreenCanvas(source.width,source.height),renderer=new ErodedRenderer(canvas,canvas.width,canvas.height);
       const sample=(time,params)=>{renderer.render(source,time,params);const pixels=new Uint8Array(canvas.width*canvas.height*4);renderer.gl.readPixels(0,0,canvas.width,canvas.height,renderer.gl.RGBA,renderer.gl.UNSIGNED_BYTE,pixels);let hash=2166136261;for(let i=0;i<pixels.length;i+=16)hash=Math.imul(hash^pixels[i],16777619);return hash>>>0};
-      const first=sample(0,DEFAULT_PARAMS),repeat=sample(0,DEFAULT_PARAMS),last=sample(DEFAULT_PARAMS.duration,DEFAULT_PARAMS),different=sample(0,{...DEFAULT_PARAMS,seed:902});renderer.dispose();return{first,repeat,last,different};
+      const first=sample(0,DEFAULT_PARAMS),repeat=sample(0,DEFAULT_PARAMS),clear=sample(2.1,DEFAULT_PARAMS),last=sample(DEFAULT_PARAMS.duration,DEFAULT_PARAMS),different=sample(0,{...DEFAULT_PARAMS,seed:902});renderer.dispose();return{first,repeat,clear,last,different};
     });
     assert.equal(deterministic.first,deterministic.repeat,'fixed seed and time render deterministically');
     assert.equal(deterministic.first,deterministic.last,'first and last animation frames match');
+    assert.notEqual(deterministic.first,deterministic.clear,'the damaged and recovery phases differ');
     assert.notEqual(deterministic.first,deterministic.different,'seed changes erosion pattern');
     const colorModes=await page.evaluate(async()=>{
       const { ErodedRenderer }=await import('./eroded/renderer.mjs');

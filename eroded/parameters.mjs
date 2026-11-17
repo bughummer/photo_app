@@ -1,10 +1,10 @@
 const defaults = {
-  decayIntensity:.72, coverage:.52, softness:.48, style:'ink', reconstruction:.85, seed:17,
-  smearAmount:.5, smearDirection:.12, smearTurbulence:.55, edgeDrag:.5, melt:.48,
-  grain:.32, noiseScale:.5, staticIntensity:.18, threshold:.45, roughness:.55,
-  contrast:.28, blacks:.35, washout:.12, blur:.28, bloom:.22, texture:.42, monochrome:false,
+  decayIntensity:.95, coverage:.72, softness:.34, style:'ink', reconstruction:.85, seed:17,
+  smearAmount:.82, smearDirection:.08, smearTurbulence:.52, edgeDrag:.72, melt:.38,
+  grain:.18, noiseScale:.48, staticIntensity:.14, threshold:.45, roughness:.52,
+  contrast:.38, blacks:.5, washout:.18, blur:.1, bloom:.12, texture:.18, monochrome:false,
   faceAware:true, eyeErosion:.7, mouthErosion:.55, cheekCollapse:.58, centerPreservation:.55,
-  duration:2.4, speed:1, loop:true, oscillation:.55, recoveryTiming:.76,
+  duration:4.8, speed:1, loop:true, oscillation:.55, recoveryTiming:.76,
   anchors:[{x:.36,y:.4},{x:.64,y:.4},{x:.5,y:.55},{x:.5,y:.7},{x:.5,y:.82}]
 };
 export const DEFAULT_PARAMS=Object.freeze(defaults);
