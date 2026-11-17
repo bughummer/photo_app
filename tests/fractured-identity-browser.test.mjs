@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-test('Fractured Identity animates image, scrubs video, and exports with audio', { timeout: 120000 }, async () => {
+test('Turbulent Glass animates image, scrubs video, and exports with audio', { timeout: 120000 }, async () => {
   const port = 44000 + process.pid % 10000;
   const server = spawn(process.execPath,['server.cjs'],{ cwd:root, env:{ ...process.env,PORT:String(port) }, stdio:'ignore' });
   const work = mkdtempSync(path.join(tmpdir(),'fractured-identity-'));
@@ -27,7 +27,28 @@ test('Fractured Identity animates image, scrubs video, and exports with audio', 
     await page.waitForTimeout(650);
     const imageB=await page.locator('#fracturedCanvas').evaluate(canvas=>canvas.toDataURL());
     assert.notEqual(imageA,imageB,'photo preview animates');
-    await page.locator('#fracturedImageControls select[aria-label="Fractured Identity preset"]').selectOption('Shattered Identity');
+    const waterChecks=await page.evaluate(async()=>{
+      const { FracturedRenderer }=await import('./fractured/renderer.mjs');
+      const { DEFAULT_PARAMS }=await import('./fractured/parameters.mjs');
+      const source=document.querySelector('#canvas');
+      const canvas=new OffscreenCanvas(source.width,source.height);
+      const renderer=new FracturedRenderer(canvas,canvas.width,canvas.height);
+      const sample=(time,params)=>{
+        renderer.render(source,time,params);
+        const bytes=new Uint8Array(canvas.width*canvas.height*4);
+        renderer.gl.readPixels(0,0,canvas.width,canvas.height,renderer.gl.RGBA,renderer.gl.UNSIGNED_BYTE,bytes);
+        let hash=2166136261;
+        for(let i=0;i<bytes.length;i+=16) hash=Math.imul(hash^bytes[i],16777619);
+        return hash>>>0;
+      };
+      const first=sample(0,DEFAULT_PARAMS),last=sample(DEFAULT_PARAMS.duration,DEFAULT_PARAMS);
+      const different=sample(0,{...DEFAULT_PARAMS,seed:902});
+      renderer.dispose();
+      return {first,last,different};
+    });
+    assert.equal(waterChecks.first,waterChecks.last,'rendered animation closes its loop');
+    assert.notEqual(waterChecks.first,waterChecks.different,'flow seed changes refraction');
+    await page.locator('#fracturedImageControls select[aria-label="Turbulent Glass preset"]').selectOption('Turbulent Water');
     const still=await Promise.all([page.waitForEvent('download'),page.getByRole('button',{name:'Save frame PNG'}).click()]).then(([download])=>download);
     const stillPath=path.join(work,'frame.png'); await still.saveAs(stillPath);
     assert.equal(readFileSync(stillPath).subarray(0,4).toString('hex'),'89504e47');
@@ -46,10 +67,10 @@ test('Fractured Identity animates image, scrubs video, and exports with audio', 
     await page.locator('#videoFile').setInputFiles(path.join(root,'tests/fixtures/sample.mp4'));
     await page.waitForFunction(()=>document.querySelector('#videoStatus').textContent.includes('Ready'));
     await page.locator('#videoEffect').selectOption('fractured-identity');
-    await page.waitForFunction(()=>document.querySelector('#fracturedVideoCanvas').width>0 && document.querySelector('#videoStatus').textContent.includes('Fractured Identity frame'),null,{timeout:30000});
+    await page.waitForFunction(()=>document.querySelector('#fracturedVideoCanvas').width>0 && document.querySelector('#videoStatus').textContent.includes('Turbulent Glass frame'),null,{timeout:30000});
     const videoA=await page.locator('#fracturedVideoCanvas').evaluate(canvas=>canvas.toDataURL());
     await page.locator('#videoTimeline').fill('1.2');
-    await page.waitForFunction(()=>document.querySelector('#videoStatus').textContent.includes('Fractured Identity frame at 1.20'));
+    await page.waitForFunction(()=>document.querySelector('#videoStatus').textContent.includes('Turbulent Glass frame at 1.20'));
     const videoB=await page.locator('#fracturedVideoCanvas').evaluate(canvas=>canvas.toDataURL());
     assert.notEqual(videoA,videoB,'video seek updates the effect');
     const movie=await Promise.all([page.waitForEvent('download',{timeout:90000}),page.locator('#exportVideo').click()]).then(([download])=>download);

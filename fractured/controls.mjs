@@ -1,12 +1,12 @@
 import { DEFAULT_PARAMS, PRESETS, applyPreset, normalizeFracturedParams, serializeParams, deserializeParams } from './parameters.mjs';
 
 const sections = [
-  ['Fracture', [
-    ['crackDensity','Crack density'],['crackThickness','Crack thickness'],['fragmentSize','Fragment size'],
-    ['fragmentDisplacement','Fragment displacement'],['glassTransparency','Glass transparency'],['refraction','Refraction strength'],['seed','Random seed','seed']
+  ['Water and glass', [
+    ['crackThickness','Turbulence detail'],['fragmentDisplacement','Ripple strength'],
+    ['glassTransparency','Glass clarity'],['refraction','Refraction strength'],['seed','Flow variation','seed']
   ]],
   ['Facial transformation', [
-    ['morphIntensity','Morph intensity'],['eyeDistortion','Eye distortion'],['mouthDistortion','Mouth distortion'],
+    ['morphIntensity','Local warp intensity'],['eyeDistortion','Eye region warp'],['mouthDistortion','Mouth region warp'],
     ['faceDeformation','Overall face deformation'],['faceTracking','Face tracking','check'],['showAnchors','Edit face anchors','check']
   ]],
   ['Ghosting', [
@@ -18,12 +18,12 @@ const sections = [
     ['loop','Loop','check'],['reconstruction','Reconstruction strength']
   ]],
   ['Styling', [
-    ['chromatic','Chromatic aberration'],['grain','Film grain'],['blur','Optical blur'],['reflection','Glass reflection'],
+    ['chromatic','Color separation'],['grain','Film grain'],['blur','Optical blur'],['reflection','Water highlights'],
     ['colorTreatment','Color treatment','color']
   ]]
 ];
 
-export function mountFracturedControls(host, onChange, storageKey = 'photo-flow:fractured-identity') {
+export function mountFracturedControls(host, onChange, storageKey = 'photo-flow:turbulent-glass-v2') {
   host.classList.add('fractured-controls');
   let params;
   try { params = deserializeParams(localStorage.getItem(storageKey)); }
@@ -32,10 +32,10 @@ export function mountFracturedControls(host, onChange, storageKey = 'photo-flow:
   const outputs = new Map();
   const element = (tag, className, text) => { const node = document.createElement(tag); if (className) node.className = className; if (text) node.textContent = text; return node; };
   const heading = element('div','fracture-intro');
-  heading.append(element('strong','', 'Fractured Identity'),element('small','', 'A moving portrait beneath unstable optical glass. Drag the anchor markers to align facial regions.'));
+  heading.append(element('strong','', 'Turbulent Glass'),element('small','', 'Look through a moving stream of water. Refraction bends the image; optional anchors add local deformation.'));
   host.append(heading);
   const presetRow = element('div','fracture-preset-row');
-  const preset = element('select'); preset.setAttribute('aria-label','Fractured Identity preset');
+  const preset = element('select'); preset.setAttribute('aria-label','Turbulent Glass preset');
   preset.add(new Option('Custom preset',''));
   for (const name of Object.keys(PRESETS)) preset.add(new Option(name,name));
   const reset = element('button','button','Reset'); reset.type = 'button';
@@ -76,7 +76,7 @@ export function mountFracturedControls(host, onChange, storageKey = 'photo-flow:
   };
   for (const [name, fields] of sections) {
     const details = element('details','fracture-section');
-    details.open = name === 'Fracture' || name === 'Animation';
+    details.open = name === 'Water and glass' || name === 'Animation';
     details.append(element('summary','',name));
     for (const field of fields) addField(details,...field);
     if (name === 'Facial transformation') {
@@ -95,7 +95,7 @@ export function mountFracturedControls(host, onChange, storageKey = 'photo-flow:
     host.append(details);
   }
   const seedRow = element('div','fracture-actions');
-  const newSeed = element('button','button','New fracture'); newSeed.type = 'button';
+  const newSeed = element('button','button','New flow'); newSeed.type = 'button';
   seedRow.append(newSeed); host.append(seedRow);
   function sync() {
     for (const [address,input] of inputs) {

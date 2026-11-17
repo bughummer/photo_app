@@ -5,7 +5,6 @@ import { samplingSchedule, setFrame } from './temporal-mapping.mjs';
 import { EchoWebGLRenderer } from './echo-renderer.mjs';
 import { echoFrameTimes, EchoPlaybackHistory, normalizeEchoParams } from './temporal-echoes.mjs';
 import { FracturedRenderer } from '../fractured/renderer.mjs';
-import { generateFractureGeometry } from '../fractured/geometry.mjs';
 import { normalizeFracturedParams } from '../fractured/parameters.mjs';
 import { AnchorTracker } from '../fractured/face.mjs';
 
@@ -162,7 +161,6 @@ async function exportVideo(effect, requestId) {
     renderer = echo ? new EchoWebGLRenderer(canvas, width, height) : fractured ? new FracturedRenderer(canvas, width, height) : new WebGL2VideoRenderer(canvas, width, height);
     if (echo) history = new EchoPlaybackHistory(width, height);
     if (fractured) {
-      renderer.setGeometry(generateFractureGeometry(fractureParams));
       if (fractureParams.faceTracking) tracker = new AnchorTracker(fractureParams.anchors);
     }
     const source = new CanvasSource(canvas, { codec: 'avc', bitrate: 4_000_000, keyFrameInterval: 2 });

@@ -6,23 +6,23 @@ export const DEFAULT_ANCHORS = Object.freeze([
 
 const layer = (x, y, scale, rotation, opacity, distortion, blend = 'normal') => ({ x, y, scale, rotation, opacity, distortion, blend });
 export const DEFAULT_PARAMS = Object.freeze({
-  crackDensity: .48, crackThickness: .5, fragmentSize: .55, fragmentDisplacement: .45,
-  glassTransparency: .72, refraction: .55, seed: 11,
-  morphIntensity: .48, eyeDistortion: .55, mouthDistortion: .5, faceDeformation: .45,
+  crackDensity: .48, crackThickness: .58, fragmentSize: .55, fragmentDisplacement: .55,
+  glassTransparency: .82, refraction: .82, seed: 11,
+  morphIntensity: .25, eyeDistortion: .28, mouthDistortion: .23, faceDeformation: .25,
   faceTracking: false, showAnchors: false,
-  ghostCount: 2, ghostOpacity: .35, layerDisplacement: .4, blendMode: 'screen',
+  ghostCount: 0, ghostOpacity: .18, layerDisplacement: .25, blendMode: 'normal',
   layers: [layer(-.018, .008, 1.012, -.025, .6, .45), layer(.022, -.014, .99, .035, .4, .75), layer(-.035, -.02, 1.025, -.045, .3, .6)],
-  duration: 1.25, speed: 1, distortionIntensity: .72, loop: true, reconstruction: .85,
-  chromatic: .32, grain: .13, blur: .12, reflection: .36, colorTreatment: 'neutral',
+  duration: 2.5, speed: 1, distortionIntensity: .82, loop: true, reconstruction: .35,
+  chromatic: .18, grain: .04, blur: .12, reflection: .34, colorTreatment: 'neutral',
   anchors: DEFAULT_ANCHORS
 });
 
 export const PRESETS = Object.freeze({
-  'Subtle Fracture': { crackDensity: .35, crackThickness: .32, fragmentDisplacement: .2, refraction: .26, morphIntensity: .2, ghostCount: 1, ghostOpacity: .14, distortionIntensity: .35, reflection: .22 },
-  'Shattered Identity': { crackDensity: .76, crackThickness: .78, fragmentDisplacement: .9, refraction: .82, morphIntensity: .88, eyeDistortion: .85, mouthDistortion: .8, ghostCount: 2, ghostOpacity: .45, distortionIntensity: .92 },
-  'Liquid Mirror': { crackDensity: .26, crackThickness: .2, fragmentSize: .8, fragmentDisplacement: .42, refraction: .95, morphIntensity: .72, faceDeformation: .8, ghostCount: 1, glassTransparency: .9, blur: .34 },
-  'Parallel Self': { crackDensity: .43, fragmentDisplacement: .55, ghostCount: 3, ghostOpacity: .72, layerDisplacement: .85, blendMode: 'screen', chromatic: .5, morphIntensity: .6 },
-  'Collapse and Rebirth': { crackDensity: .65, crackThickness: .73, fragmentDisplacement: .95, morphIntensity: .95, faceDeformation: .95, refraction: .9, ghostCount: 3, ghostOpacity: .62, distortionIntensity: 1, reconstruction: 1, duration: 1.8 }
+  'Clear Glass': { crackThickness: .35, fragmentDisplacement: .2, refraction: .38, morphIntensity: .08, ghostCount: 0, distortionIntensity: .48, reflection: .18 },
+  'Running Stream': { crackThickness: .65, fragmentDisplacement: .7, refraction: .9, morphIntensity: .22, ghostCount: 0, distortionIntensity: .9, reflection: .4 },
+  'Turbulent Water': { crackThickness: .86, fragmentDisplacement: .92, refraction: 1, morphIntensity: .42, ghostCount: 0, distortionIntensity: 1, reflection: .52 },
+  'Liquid Mirror': { crackThickness: .48, fragmentDisplacement: .62, refraction: .95, morphIntensity: .48, ghostCount: 1, ghostOpacity: .19, distortionIntensity: .85, blur: .24 },
+  'Deep Current': { crackThickness: .72, fragmentDisplacement: .88, refraction: 1, morphIntensity: .62, ghostCount: 1, ghostOpacity: .25, distortionIntensity: 1, reflection: .2, duration: 3.2 }
 });
 
 export function normalizeFracturedParams(raw = {}) {
@@ -49,7 +49,7 @@ export function normalizeFracturedParams(raw = {}) {
 }
 
 export function applyPreset(name, current = DEFAULT_PARAMS) {
-  if (!PRESETS[name]) throw new Error(`Unknown Fractured Identity preset: ${name}`);
+  if (!PRESETS[name]) throw new Error(`Unknown Turbulent Glass preset: ${name}`);
   return normalizeFracturedParams({ ...current, ...PRESETS[name] });
 }
 

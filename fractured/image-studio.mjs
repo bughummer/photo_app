@@ -17,7 +17,7 @@ const play = button('Pause animation'), save = button('Save frame PNG'), exportA
 const controls = mountFracturedControls(panel, params => {
   preview?.setParams(params);
   handles?.update(params.anchors,active && params.showAnchors);
-}, 'photo-flow:fractured-identity');
+}, 'photo-flow:turbulent-glass-v2');
 panel.append(actions,status);
 function say(message, error = false) { status.textContent = message; status.classList.toggle('error',error); }
 function fit() {
@@ -36,7 +36,7 @@ function show() {
   panel.hidden = false;
   stage.classList.add('fractured-active');
   canvas.hidden = !source;
-  if (!source) { say('Open a photograph to start Fractured Identity.'); return; }
+  if (!source) { say('Open a photograph to start Turbulent Glass.'); return; }
   if (!preview) {
     const scale = Math.min(1, 720 / Math.max(source.width,source.height));
     preview = new FracturedPreview(canvas,Math.max(2,Math.round(source.width*scale)),Math.max(2,Math.round(source.height*scale)),error => say(error.message,true));
@@ -47,7 +47,7 @@ function show() {
       anchors[index] = point;
       controls.set({ ...params,anchors });
     });
-    preview.setParams(controls.get()).then(() => say('Fractured Identity ready. Adjust a preset or drag the face anchors.'));
+    preview.setParams(controls.get()).then(() => say('Turbulent Glass ready. Adjust a preset or drag the face anchors.'));
   }
   handles.update(controls.get().anchors,controls.get().showAnchors);
   epoch = performance.now() - frozenTime*1000;
@@ -92,12 +92,11 @@ async function exportStill() {
   output.width = source.width; output.height = source.height;
   const renderer = new FracturedRenderer(output,output.width,output.height);
   try {
-    renderer.setGeometry(preview.renderer.geometry);
     renderer.render(source,frozenTime,controls.get());
     const blob = await new Promise(resolve => output.toBlob(resolve,'image/png'));
     if (!blob) throw new Error('Could not create a PNG.');
-    download(blob,'photo-flow-fractured-identity.png');
-    say('Saved Fractured Identity frame.');
+    download(blob,'photo-flow-turbulent-glass.png');
+    say('Saved Turbulent Glass frame.');
   } catch (error) { say(error.message,true); }
   finally { renderer.dispose(); output.width = output.height = 0; }
 }
@@ -118,7 +117,6 @@ exportAnimation.addEventListener('click',async () => {
     else throw new Error('This browser cannot encode MP4 or WebM video at the selected size.');
     const offscreen = new OffscreenCanvas(width,height);
     renderer = new FracturedRenderer(offscreen,width,height);
-    renderer.setGeometry(preview.renderer.geometry);
     target = new BufferTarget();
     output = new Output({ format,target });
     const track = new CanvasSource(offscreen,{ codec,bitrate:3_000_000,keyFrameInterval:1 });
@@ -137,7 +135,7 @@ exportAnimation.addEventListener('click',async () => {
     }
     await output.finalize();
     if (!target.buffer) throw new Error('The animation encoder produced no video.');
-    download(new Blob([target.buffer],{ type:mime }),`photo-flow-fractured-identity.${extension}`);
+    download(new Blob([target.buffer],{ type:mime }),`photo-flow-turbulent-glass.${extension}`);
     say(`Saved ${extension.toUpperCase()} animation.`);
   } catch (error) {
     if (output && output.state !== 'finalized' && output.state !== 'canceled') await output.cancel();

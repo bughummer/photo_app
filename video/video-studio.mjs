@@ -221,7 +221,7 @@ function syncEffectControls(announce = true) {
     try { ensureEcho(); if (announce) status('Temporal Echoes ready. Play or scrub to explore the trails.'); }
     catch (error) { status(error.message, true); }
   } else if (isFractured() && media) {
-    try { ensureFracture(); fractureHandles?.update(fractureControls.get().anchors,fractureControls.get().showAnchors); if (announce) status('Fractured Identity ready. Play or scrub the video.'); }
+    try { ensureFracture(); fractureHandles?.update(fractureControls.get().anchors,fractureControls.get().showAnchors); if (announce) status('Turbulent Glass ready. Play or scrub the video.'); }
     catch (error) { status(error.message,true); }
   } else if (media) scheduleExtract(video.currentTime);
 }
@@ -299,7 +299,7 @@ async function renderExtracted(time) {
     fracturePreview.render();
     fractureHandles?.update(fracturePreview.anchors,fractureControls.get().showAnchors);
     updateTime(time);
-    status(`Fractured Identity frame at ${time.toFixed(2)} s.`);
+    status(`Turbulent Glass frame at ${time.toFixed(2)} s.`);
     return;
   }
   if (isEcho()) {
