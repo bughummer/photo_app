@@ -7,6 +7,8 @@ import { echoFrameTimes, EchoPlaybackHistory, normalizeEchoParams } from './temp
 import { FracturedRenderer } from '../fractured/renderer.mjs';
 import { normalizeFracturedParams } from '../fractured/parameters.mjs';
 import { AnchorTracker } from '../fractured/face.mjs';
+import { ErodedRenderer } from '../eroded/renderer.mjs';
+import { normalizeParams as normalizeErodedParams } from '../eroded/parameters.mjs';
 
 let input = null;
 let track = null;
@@ -141,8 +143,10 @@ async function exportVideo(effect, requestId) {
   if (duration > 60) throw new Error('Stage 1 export is limited to 60 seconds. Trim the clip first or choose a shorter video.');
   const echo = effect?.name === 'temporal-echoes';
   const fractured = effect?.name === 'fractured-identity';
+  const eroded = effect?.name === 'eroded-identity';
   const fractureParams = fractured ? normalizeFracturedParams(effect) : null;
-  const scale = echo || fractured ? Math.min(1, 720 / Math.max(previewCanvas.width, previewCanvas.height)) : 1;
+  const erodedParams = eroded ? normalizeErodedParams(effect) : null;
+  const scale = echo || fractured || eroded ? Math.min(1, 720 / Math.max(previewCanvas.width, previewCanvas.height)) : 1;
   const width = Math.max(2, Math.floor(previewCanvas.width * scale / 2) * 2);
   const height = Math.max(2, Math.floor(previewCanvas.height * scale / 2) * 2);
   if (typeof VideoEncoder === 'undefined' || !await canEncodeVideo('avc', { width, height, frameRate: 24 })) throw new Error('This browser cannot encode H.264 MP4 at the working resolution.');
@@ -158,11 +162,12 @@ async function exportVideo(effect, requestId) {
     const target = new BufferTarget();
     output = new Output({ format, target });
     const canvas = new OffscreenCanvas(width, height);
-    renderer = echo ? new EchoWebGLRenderer(canvas, width, height) : fractured ? new FracturedRenderer(canvas, width, height) : new WebGL2VideoRenderer(canvas, width, height);
+    renderer = echo ? new EchoWebGLRenderer(canvas, width, height) : fractured ? new FracturedRenderer(canvas, width, height) : eroded ? new ErodedRenderer(canvas,width,height) : new WebGL2VideoRenderer(canvas, width, height);
     if (echo) history = new EchoPlaybackHistory(width, height);
     if (fractured) {
       if (fractureParams.faceTracking) tracker = new AnchorTracker(fractureParams.anchors);
     }
+    if (eroded && erodedParams.faceAware) tracker = new AnchorTracker(erodedParams.anchors);
     const source = new CanvasSource(canvas, { codec: 'avc', bitrate: 4_000_000, keyFrameInterval: 2 });
     output.addVideoTrack(source);
     let audioSource = null;
@@ -200,6 +205,8 @@ async function exportVideo(effect, requestId) {
         } else if (fractured) {
           const anchors = tracker ? tracker.update(frameCanvas) : fractureParams.anchors;
           renderer.render(frameCanvas, timestamps[index], fractureParams, anchors, true);
+        } else if (eroded) {
+          renderer.render(frameCanvas,timestamps[index],erodedParams,tracker?tracker.update(frameCanvas):erodedParams.anchors,true);
         } else renderer.render(frameCanvas, effect);
         await source.add(timestamps[index], Math.min(1 / 24, duration - timestamps[index]));
       } finally {

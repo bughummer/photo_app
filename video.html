@@ -17,7 +17,7 @@
       <aside class="video-panel">
         <div class="section-label">VIDEO EFFECT</div>
         <label for="videoEffect">Effect</label>
-        <select id="videoEffect"><option value="none">Original video</option><option value="fractured-identity">Turbulent Glass</option><option value="temporal-echoes">Temporal Echoes</option><option value="slit-scan">Slit Scan</option><option value="spacetime">Spacetime Cube</option></select>
+        <select id="videoEffect"><option value="none">Original video</option><option value="fractured-identity">Turbulent Glass</option><option value="eroded-identity">Eroded Identity</option><option value="temporal-echoes">Temporal Echoes</option><option value="slit-scan">Slit Scan</option><option value="spacetime">Spacetime Cube</option></select>
         <div id="frameEffectControls">
           <p>Choose an effect, then click or drag on the frame to place it. The same settings apply across the clip.</p>
           <label class="slider-label" for="videoSize"><span>Area</span><output id="videoSizeValue">35%</output></label>
@@ -25,7 +25,7 @@
           <label class="slider-label" for="videoStrength"><span>Strength</span><output id="videoStrengthValue">60%</output></label>
           <input id="videoStrength" type="range" min="5" max="100" value="60">
         </div>
-        <div id="fracturedVideoControls" hidden></div>
+        <div id="fracturedVideoControls" hidden></div><div id="erodedVideoControls" hidden></div>
         <div id="echoControls" hidden>
           <p>Moving details leave fading copies of their earlier positions. Play or scrub the video to explore the trail, then save a frame or export MP4.</p>
           <label class="slider-label" for="echoCount"><span>Echoes</span><output id="echoCountValue">3</output></label><input id="echoCount" type="range" min="1" max="4" step="1" value="3">
@@ -68,7 +68,7 @@
         <p class="video-note">Playback keeps the source audio. MP4 export copies AAC audio when supported. Stage 1 exports up to 60 seconds at a working resolution of 1280 pixels.</p>
       </aside>
       <section class="video-workspace" aria-label="Video preview">
-        <div class="video-preview"><canvas id="videoCanvas" aria-label="Effect preview"></canvas><canvas id="fracturedVideoCanvas" aria-label="Turbulent Glass preview" hidden></canvas><canvas id="echoCanvas" aria-label="Temporal Echoes preview" hidden></canvas><canvas id="slitCanvas" aria-label="Slit Scan preview" hidden></canvas><div id="cubeViewport" aria-label="Interactive spacetime volume" hidden></div><div id="videoEmpty">Open a video to preview its frames.</div></div>
+        <div class="video-preview"><canvas id="videoCanvas" aria-label="Effect preview"></canvas><canvas id="fracturedVideoCanvas" aria-label="Turbulent Glass preview" hidden></canvas><canvas id="erodedVideoCanvas" aria-label="Eroded Identity preview" hidden></canvas><canvas id="echoCanvas" aria-label="Temporal Echoes preview" hidden></canvas><canvas id="slitCanvas" aria-label="Slit Scan preview" hidden></canvas><div id="cubeViewport" aria-label="Interactive spacetime volume" hidden></div><div id="videoEmpty">Open a video to preview its frames.</div></div>
         <div class="video-controls">
           <button id="playVideo" class="button" disabled>Play</button>
           <span id="videoTime">0:00 / 0:00</span>

@@ -458,6 +458,7 @@
   $('export').addEventListener('click', () => {
     if (!state.ready) return;
     if (state.brush === 'fractured' && window.PhotoFlowFracturedImage) { window.PhotoFlowFracturedImage.exportStill(); return; }
+    if (state.brush === 'eroded' && window.PhotoFlowErodedImage) { window.PhotoFlowErodedImage.exportStill(); return; }
     stopMotion();
     particles.stop();
     draw();

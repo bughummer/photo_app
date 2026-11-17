@@ -54,9 +54,10 @@ function show() {
   fit();
 }
 function hide() {
+  if (!active) return;
   active = false;
   panel.hidden = true;
-  $('brushControls').hidden = false;
+  $('brushControls').hidden = document.querySelector('.stage.eroded-active') !== null;
   stage.classList.remove('fractured-active');
   canvas.hidden = true;
   handles?.dispose(); handles = null;

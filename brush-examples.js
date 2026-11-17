@@ -121,6 +121,9 @@
         path(ctx, i % 2 ? '#8ac9dc' : '#c8eef0', i % 2 ? 1.2 : 2,
           [[3,y+3],[14,y-3],[27,y+5],[40,y-4],[57,y+2]]);
       }
+    } else if (mode === 'eroded') {
+      for (let i=0;i<4;i++) path(ctx,i%2?'#6c737b':'#d4d0c9',2+i*.5,[[15,8+i*8],[29,6+i*8],[39,15+i*8],[52,13+i*8]]);
+      for (let i=0;i<36;i++) { const x=12+(i*19)%42,y=15+(i*29)%37;ctx.fillStyle=i%3?'#111820':'#c3c6c5';ctx.globalAlpha=.3+(i%4)*.15;ctx.fillRect(x,y,1+(i%3),1+(i%3)); }
     } else if (mode === 'particle') {
       for (let i = 0; i < 36; i++) {
         const a = i * 2.399, r = 4 + (i % 7) * 3;

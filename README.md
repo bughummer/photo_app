@@ -37,3 +37,9 @@ Choose **Temporal Echoes** in Video Studio to make moving parts of a clip leave 
 Choose **Turbulent Glass** in Image Studio or Video Studio to view a photo or clip through flowing, turbulent water. A looping GPU refraction field bends the image continuously, with moving ripples, restrained color separation, and subtle caustic highlights. Five presets control the strength and character of the flow. Optional face anchors and ghost layers can add local deformation. The same time and parameter values drive preview and export.
 
 Image Studio saves the current frame as PNG and its short loop as MP4 or WebM, depending on the browser encoder. Video Studio saves a frame PNG and exports MP4 with compatible original AAC audio. Processing stays local; video export uses a 720-pixel working size and the existing 60-second export limit. The effect warps the supplied image without generating new content.
+
+## Eroded Identity
+
+Choose **Eroded Identity** in either studio for a looping grayscale dissolution effect. A seeded GPU mask controls where image detail smears, darkens, breaks into grain, and recovers. Use Dust, Ink, Signal, or Ash decay, or start from one of five editable presets. Face emphasis uses adjustable anchors; automatic placement is available when the browser supports FaceDetector. The effect can also be used on other images with generic erosion regions.
+
+Image Studio exports a still PNG and an MP4 or WebM loop when the browser encoder supports it. Video Studio previews the effect during playback and scrubbing, exports a frame PNG, and exports MP4 while copying compatible AAC audio. Processing stays local and uses the existing video export limits.
